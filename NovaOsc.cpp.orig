@@ -1,0 +1,417 @@
+/*
+ *
+<<<<<<< HEAD
+ *    Copyright (C) 2013 Tim Blechmann
+=======
+ *    Copyright (C) 2012 Tim Blechmann
+ *    extended from Gendy ugens, implemented by Nick Collins
+>>>>>>> osc
+ *
+ *    This program is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation; either version 2 of the License, or
+ *    (at your option) any later version.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this program; if not, write to the Free Software
+ *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
+#include "SC_PlugIn.hpp"
+<<<<<<< HEAD
+
+#include <cmath>
+#include <limits>
+
+static InterfaceTable *ft;
+
+struct PulseDPW2:
+	public SCUnit
+{
+public:
+	PulseDPW2():
+		mFreq(std::numeric_limits<float>::quiet_NaN()),
+		mLastVal0(0),
+		mLastVal1(0)
+	{
+		const float width = in0(1);
+		const float phase = in0(2);
+
+		mPhase0 = sc_wrap(phase, -1.0f, 1.0f);
+		mPhase1 = sc_wrap(phase + width + width, -1.0f, 1.0f);
+
+		switch (inRate(0)) {
+		case calc_ScalarRate:
+		{
+			float freq = in0(0);
+			float scale;
+			double phaseIncrement;
+			updateFrequency<true>(freq, scale, phaseIncrement);
+
+			set_calc_function<PulseDPW2, &PulseDPW2::next_i>();
+			break;
+		}
+
+		case calc_BufRate:
+			set_calc_function<PulseDPW2, &PulseDPW2::next_k>();
+			break;
+
+		case calc_FullRate:
+			set_calc_function<PulseDPW2, &PulseDPW2::next_a>();
+		}
+	}
+
+private:
+	void next_i(int inNumSamples)
+	{
+		float scale = mScale;
+		double phaseIncrement = mPhaseIncrement;
+
+		next(inNumSamples, makeScalar(scale), makeScalar(phaseIncrement));
+	}
+
+	void next_k(int inNumSamples)
+	{
+		float freq = in0(0);
+		if (freq == mFreq) {
+			next_i(inNumSamples);
+		} else {
+			float lastScale = mScale;
+			double lastPhaseIncrement = mPhaseIncrement;
+
+			float nextScale;
+			double nextPhaseIncrement;
+			updateFrequency<true>(freq, nextScale, nextPhaseIncrement);
+			next(inNumSamples, makeSlope(nextScale, lastScale), makeSlope(nextPhaseIncrement, lastPhaseIncrement));
+		}
+	}
+
+	void next_a(int inNumSamples)
+	{
+		float lastVal0 = mLastVal0;
+		float lastVal1 = mLastVal1;
+		double phase0 = mPhase0;
+		double phase1 = mPhase1;
+
+		float * outSig = zout(0);
+
+		AudioSignal<float> freq(in(0));
+
+		loop(inNumSamples, [&] {
+			double phaseIncrement;
+			float scale;
+
+			updateFrequency<false>(freq.consume(), scale, phaseIncrement);
+
+			ZXP(outSig) = tick(phase0, phase1, phaseIncrement, lastVal0, lastVal1, scale);
+		});
+
+		mLastVal0 = lastVal0;
+		mLastVal1 = lastVal1;
+		mPhase0 = phase0;
+		mPhase1 = phase1;
+	}
+
+	template <typename ScaleType, typename PhaseType>
+	inline void next(int inNumSamples, ScaleType scale, PhaseType phaseIncrement)
+	{
+		float lastVal0 = mLastVal0;
+		float lastVal1 = mLastVal1;
+		double phase0 = mPhase0;
+		double phase1 = mPhase1;
+
+		float * outSig = zout(0);
+		LOOP(inNumSamples >> 1,
+			float out0 = tick(phase0, phase1, phaseIncrement.consume(), lastVal0, lastVal1, scale.consume());
+			float out1 = tick(phase0, phase1, phaseIncrement.consume(), lastVal0, lastVal1, scale.consume());
+
+			ZXP(outSig) = out0;
+			ZXP(outSig) = out1;
+		);
+
+		LOOP(inNumSamples & 1,
+			ZXP(outSig) = tick(phase0, phase1, phaseIncrement.consume(), lastVal0, lastVal1, scale.consume());
+		);
+
+		mLastVal0 = lastVal0;
+		mLastVal1 = lastVal1;
+		mPhase0 = phase0;
+		mPhase1 = phase1;
+	}
+
+	template <bool StoreUpdate = true>
+	inline void updateFrequency(float freq, float & scale, double & phaseIncrement)
+	{
+		// we simulate negative frequencies by scaling positive frequencies by -1
+		const float absScale = freq >= 0 ? 1 : -1;
+		freq = std::abs(freq);
+
+		const float sampleDuration = sampleDur();
+		freq = freq * 2 * sampleDuration;
+
+		scale = absScale / (4.f * freq * ( 1.f - freq * sampleDuration));
+		phaseIncrement = freq;
+
+		if (StoreUpdate) {
+			mFreq = freq;
+			mScale = scale;
+			mPhaseIncrement = phaseIncrement;
+		}
+	}
+
+	static inline double incrementPhase(double phase, double phaseIncrement)
+	{
+		phase += phaseIncrement;
+		if (phase >= 1.) return phase - 2.;
+		return phase;
+	}
+
+	static inline float tick(double & phase0, double & phase1, double phaseIncrement,
+							 float & lastVal0, float & lastVal1, float scale)
+	{
+		phase0 = incrementPhase(phase0, phaseIncrement);
+		phase1 = incrementPhase(phase1, phaseIncrement);
+
+		// squared saw
+		float val0 = (float)phase0 * (float)phase0;
+		float val1 = (float)phase1 * (float)phase1;
+
+		// differentiate parabolic wave
+		float differentiatedPhase0 = val0 - lastVal0;
+		float differentiatedPhase1 = val1 - lastVal1;
+
+		// substracting saws to get a pulse
+		float pulse = (differentiatedPhase0 - differentiatedPhase1) * scale;
+
+		lastVal0 = val0;
+		lastVal1 = val1;
+
+		return pulse;
+	}
+
+	double mPhase0, mPhase1, mPhaseIncrement;
+	float mLastVal0, mLastVal1;
+
+	float mFreq, mScale;
+};
+
+DEFINE_XTORS(PulseDPW2)
+=======
+#include <cmath>
+
+#include "Interpolators.hpp"
+
+static InterfaceTable *ft;
+
+
+enum interpolator {
+	SampleHold,
+	Linear,
+	Cubic,
+	Interp_4_5_2nd,
+	Bspline_4p_3o,
+	Bspline_6p_5o,
+	Opt_2x_4p_4o,
+	Opt_2x_6p_5o
+};
+
+template <typename UGen,
+		  int Index>
+struct IRateInput
+{
+	float value;
+
+	IRateInput(UGen const & ugen)
+	{
+		Unit * unit = &ugen;
+		value = ZIN0(Index);
+	}
+
+	float operator()() const
+	{
+		return value;
+	}
+};
+
+template <typename UGen,
+		  int Index>
+struct KRateInput
+{
+	float value;
+	float slope;
+
+	KRateInput(UGen const & ugen, float lastValue)
+	{
+		Unit * unit = &ugen;
+		float nextValue = ZIN0(Index);
+		slope = CALCSLOPE(nextValue, lastValue);
+	}
+
+	KRateInput(UGen const & ugen, float lastValue, float & rNextValue)
+	{
+		Unit * unit = &ugen;
+		float nextValue = ZIN0(Index);
+		slope = CALCSLOPE(nextValue, lastValue);
+		rNextValue = nextValue;
+	}
+
+	float operator()()
+	{
+		float ret = value;
+		value += slope;
+		return ret;
+	}
+};
+
+template <typename UGen,
+		  int Index>
+struct ARateInput
+{
+	float * values;
+
+	ARateInput(UGen const & ugen)
+	{
+		Unit * unit = &ugen;
+		values = ZIN(Index);
+	}
+
+	float operator()()
+	{
+		return ZXP(values);
+	}
+};
+
+struct OscI : public SCUnit
+{
+	typedef float phaseType;
+
+	phaseType mPhase;
+	float  mPhasein;
+
+	SndBuf *m_buf;
+	float m_fbufnum;
+
+	template <int Interpolator>
+	static const int numberOfPoints()
+	{
+		switch (Interpolator)
+		{
+		case SampleHold:
+			return 1;
+
+		case Linear:
+			return 2;
+
+		case Cubic:
+		case Interp_4_5_2nd:
+		case Bspline_4p_3o:
+		case Opt_2x_4p_4o:
+			return 4;
+
+		case Bspline_6p_5o:
+		case Opt_2x_6p_5o:
+			return 6;
+
+		default:
+			assert(false);
+		}
+	}
+
+	OscI()
+	{
+		m_fbufnum = -1;
+		OscI * unit = this;
+		SIMPLE_GET_BUF;
+
+		mPhase = 0;
+		mPhasein = 0;
+
+		int typeOfInterpolation = in0(3);
+		typeOfInterpolation = sc_clip(typeOfInterpolation, 0, Opt_2x_6p_5o);
+
+		switch (typeOfInterpolation) {
+		case 0: set_calc_function<OscI, &OscI::nextN<SampleHold> >(); break;
+		case 1: set_calc_function<OscI, &OscI::nextN<Linear> >(); break;
+		case 2: set_calc_function<OscI, &OscI::nextN<Cubic> >(); break;
+		case 3: set_calc_function<OscI, &OscI::nextN<Interp_4_5_2nd> >(); break;
+		case 4: set_calc_function<OscI, &OscI::nextN<Bspline_4p_3o> >(); break;
+		case 5: set_calc_function<OscI, &OscI::nextN<Bspline_6p_5o> >(); break;
+		case 6: set_calc_function<OscI, &OscI::nextN<Opt_2x_4p_4o> >(); break;
+		case 7: set_calc_function<OscI, &OscI::nextN<Opt_2x_6p_5o> >(); break;
+		}
+	}
+
+	template <int Interpolator/*, int FreqRate, int PhaseRate*/>
+	void nextN( int inNumSamples )
+	{
+		OscI * unit = this;
+		const SndBuf * buf = m_buf;
+		const float *table0 = buf->data;
+		int32 mask = buf->mask;
+
+		float * out = ZOUT(0);
+
+		float freq  = ZIN0(1);
+		float phaseOffset = ZIN0(2);
+
+		phaseType phaseI = freq / sampleRate() * (double)buf->samples;
+
+		phaseType phase = mPhase;
+
+		for (int i = 0; i != inNumSamples; ++i) {
+			if (phase > buf->samples)
+				phase -= buf->samples;
+
+			phaseType phase1 = phase + phaseOffset;
+			int32 iphase = (int32)phase1;
+			phaseType fracphase = phase1 - (phaseType)iphase;
+
+#if 0
+			int32 index0 = iphase & mask;
+			int32 index1 = (iphase+1) & mask;
+			float s0 = table0[index0];
+			float s1 = table0[index1];
+
+			float x = lininterp(fracphase, s0, s1);
+#else
+			int32 index0 = (iphase-1) & mask;
+			int32 index1 = iphase & mask;
+			int32 index2 = (iphase+1) & mask;
+			int32 index3 = (iphase+2) & mask;
+			phaseType s0 = table0[index0];
+			phaseType s1 = table0[index1];
+			phaseType s2 = table0[index2];
+			phaseType s3 = table0[index3];
+
+			float x = opt_2x_4p_4o(fracphase, s0, s1, s2, s3);
+#endif
+
+			ZXP(out) = x;
+
+			phase += phaseI;
+		}
+
+		mPhase = phase;
+	}
+};
+
+
+DEFINE_XTORS(OscI)
+>>>>>>> osc
+
+PluginLoad(NovaOsc)
+{
+	ft = inTable;
+<<<<<<< HEAD
+	DefineSimpleUnit(PulseDPW2);
+}
+
+=======
+	DefineDtorUnit(OscI);
+}
+>>>>>>> osc
