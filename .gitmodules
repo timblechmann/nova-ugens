@@ -1,0 +1,3 @@
+[submodule "nt2"]
+	path = nt2
+	url = https://github.com/MetaScale/nt2.git
