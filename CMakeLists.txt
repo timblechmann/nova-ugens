@@ -36,7 +36,7 @@ set (sources FeedbackAM.cpp
 foreach(src ${sources})
   string(REPLACE .cpp "" libname ${src} )
 
-  add_library(${libname} SHARED ${src})
+  add_library(${libname} SHARED ${src} TLSF-2.4.6/src/tlsf.c)
 
   set (snlib ${libname}_supernova)
 
