@@ -374,9 +374,12 @@ class PlaybackQueue:
 {
 public:
     // nrt
-    PlaybackQueue( int32_t id, path const & filename, position_t startIndex = 0 ):
-        id(id), sf(filename.c_str(), SFM_READ), terminate(false)
+    PlaybackQueue( bool isRealtime, int32_t id, path const & filename, position_t startIndex = 0 ):
+        id(id), sf(filename.c_str(), SFM_READ), terminate(false), realTimeSynthesis(isRealtime)
     {
+        if (!isRealtime)
+            return;
+
         // we start queuing the first chunks immediately so they are available
         for (int i = 0; i != 16; ++i)
             queue( chunkAt(startIndex + i * framesPerChunk) );
@@ -391,13 +394,15 @@ public:
     // nrt
     ~PlaybackQueue()
     {
-        terminate = true;
-        positionRequestSemaphore.post();
-        workerThread.join();
+        if (realTimeSynthesis) {
+            terminate = true;
+            positionRequestSemaphore.post();
+            workerThread.join();
 
-        chunksForRt.consume_all(  std::default_delete<Chunk>() );
-        chunks.clear_and_dispose( std::default_delete<Chunk>() );
-        freeRetiredChunks();
+            chunksForRt.consume_all(  std::default_delete<Chunk>() );
+            chunks.clear_and_dispose( std::default_delete<Chunk>() );
+            freeRetiredChunks();
+        }
     }
 
     // nrt
@@ -477,6 +482,27 @@ public:
             assert( framesFromChunk1 + framesFromChunk2 == numberOfFrames );
     }
 
+    void readSamplesNRT(float ** out, position_t position, size_t numberOfFrames, int expectedChannels)
+    {
+        const int channels = sf.channels();
+        if (channels != expectedChannels) { // channel mismatch!
+            clearOutput(out, expectedChannels, 0, numberOfFrames);
+            return;
+        }
+
+
+        sf.seek(position, SEEK_SET);
+
+        std::vector<float> interleavedData(numberOfFrames * expectedChannels);
+        size_t readFrames = sf.readf(interleavedData.data(), numberOfFrames);
+
+        deinterleaveToOutput( out, expectedChannels, 0, readFrames, interleavedData.data() );
+
+        if (readFrames != numberOfFrames)
+            clearOutput( out, expectedChannels, readFrames, numberOfFrames - readFrames);
+    }
+
+
     // nrt
     void readerLoop()
     {
@@ -508,6 +534,8 @@ public:
     // rt
     void performMaintenance(position_t currentPosition)
     {
+        assert(realTimeSynthesis);
+
         int allowedOperations = 16;
         allowedOperations -= registerAvailableChunks(allowedOperations);
 
@@ -653,6 +681,8 @@ private:
     std::set<position_t, std::less<position_t>, RtAllocator > requestedChunks;
     boost::sync::semaphore                                    positionRequestSemaphore;
 
+    bool realTimeSynthesis;
+
     std::thread      workerThread;
     std::atomic_bool terminate;
 };
@@ -665,9 +695,9 @@ public:
     {}
 
     // nrt
-    PlaybackQueue * openAndQueueFile( int32_t id, path const & filename, position_t queuePosition )
+    PlaybackQueue * openAndQueueFile( bool isRealtime, int32_t id, path const & filename, position_t queuePosition )
     {
-        return new PlaybackQueue( id, filename, queuePosition );
+        return new PlaybackQueue( isRealtime, id, filename, queuePosition );
     }
 
     // rt
@@ -708,6 +738,15 @@ public:
 
         it->readSamples(out, position, inNumSamples, expectedChannels);
         it->performMaintenance(position + inNumSamples);
+    }
+
+    void readNRT( int32_t id, position_t position, float ** out, int inNumSamples, int expectedChannels)
+    {
+        auto it = playerQueues.find( id, HashFunctor(), EqualFunctor() );
+        if ( it == playerQueues.end() )
+            return;
+
+        it->readSamplesNRT(out, position, inNumSamples, expectedChannels);
     }
 
 private:
@@ -765,10 +804,9 @@ static bool novaDiskInCmd2Nrt(World* world, void* inUserData)
 {
     NovaDiskInCmd * cmd = reinterpret_cast<NovaDiskInCmd*>(inUserData);
 
-    switch (cmd->mode)
-    {
+    switch (cmd->mode) {
     case kOpen:
-        cmd->queue = gPlaybackManager.openAndQueueFile( cmd->id, path(cmd->path), cmd->queuePosition );
+        cmd->queue = gPlaybackManager.openAndQueueFile( world->mRealTime, cmd->id, path(cmd->path), cmd->queuePosition );
         break;
 
     case kClose:
@@ -872,7 +910,11 @@ public:
         mChannelCount       = in0(0);
         mPlaybackQueueIndex = in0(1);
 
-        mCalcFunc = make_calc_function<NovaDiskIn, &NovaDiskIn::next>();
+        if (mWorld->mRealTime)
+            mCalcFunc = make_calc_function<NovaDiskIn, &NovaDiskIn::next>();
+        else
+            mCalcFunc = make_calc_function<NovaDiskIn, &NovaDiskIn::nextNRT>();
+
         ClearUnitOutputs(this, 1);
     }
 
@@ -880,6 +922,12 @@ private:
     void next(int inNumSamples)
     {
         gPlaybackManager.readFromChunk(mPlaybackQueueIndex, currentPosition, this->mOutBuf, inNumSamples, mChannelCount);
+        currentPosition += inNumSamples;
+    }
+
+    void nextNRT(int inNumSamples)
+    {
+        gPlaybackManager.readNRT(mPlaybackQueueIndex, currentPosition, this->mOutBuf, inNumSamples, mChannelCount);
         currentPosition += inNumSamples;
     }
 
