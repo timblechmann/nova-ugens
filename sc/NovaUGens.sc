@@ -10,11 +10,11 @@ GendyI : UGen {
     }
 }
 
-DiodeLadderFilter : Filter {
-    *ar { arg sig, freq = 440, q = 0.2, feedbackHPF = 1000, mul = 1.0, add = 0.0;
-        ^this.multiNew('audio', sig, freq, q, feedbackHPF).madd( mul, add )
-    }
-}
+// DiodeLadderFilter : Filter {
+//     *ar { arg sig, freq = 440, q = 0.2, feedbackHPF = 1000, mul = 1.0, add = 0.0;
+//         ^this.multiNew('audio', sig, freq, q, feedbackHPF).madd( mul, add )
+//     }
+// }
 
 FBAM : PureUGen {
     *ar { arg sig, feedback = 0.1, mul = 1.0, add = 0.0;
@@ -47,14 +47,6 @@ NovaOsc : UGen {
 	}
 	*kr { arg buf, freq, phase = 0, interpolation = 1, mul=1.0, add=0.0;
 		^this.multiNew('audio', buf, freq, phase, interpolation).madd( mul, add )
-	}
-}
-
-
-NovaDiskOut : UGen {
-	*ar { arg channelArray, filename;
-		var args = [channelArray.size] ++ channelArray ++ [filename.size] ++ filename.asString.collectAs(_.ascii, Array);
-		^this.multiNew('audio', *args)
 	}
 }
 
