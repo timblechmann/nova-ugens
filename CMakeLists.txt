@@ -20,8 +20,8 @@ include_directories(${SC_PATH}/external_libraries/nova-tt)
 
 if (${UNIX})
   add_definitions(-fvisibility-inlines-hidden)
-  add_definitions(-fvisibility=hidden)
-  add_definitions(-std=c++11)
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif(${UNIX})
 
 SET(CMAKE_SHARED_LIBRARY_PREFIX "")
@@ -40,7 +40,7 @@ foreach(src ${sources})
 
   set (snlib ${libname}_supernova)
 
-  add_library(${snlib} SHARED ${src})
+  add_library(${snlib} SHARED ${src} TLSF-2.4.6/src/tlsf.c)
 
   set_property(TARGET ${snlib}
     APPEND PROPERTY COMPILE_DEFINITIONS SUPERNOVA)
@@ -48,8 +48,11 @@ foreach(src ${sources})
   set(libs ${libname} ${snlib} ${libs})
 endforeach()
 
+target_link_libraries( NovaDiskIO sndfile)
+target_link_libraries( NovaDiskIO_supernova sndfile)
+
 install(TARGETS ${libs}
         DESTINATION "lib/SuperCollider/plugins/")
 
-install(FILES sc/NovaUGens.sc
+install(FILES sc/NovaUGens.sc sc/NovaDiskIOUGens.sc
         DESTINATION "share/SuperCollider/Extensions/Nova/")

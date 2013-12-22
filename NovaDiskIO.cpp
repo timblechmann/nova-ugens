@@ -29,11 +29,11 @@
 #include <map>
 #include <thread>
 #include <scoped_allocator>
-#include <nova-tt/semaphore.hpp>
+
+#define BOOST_ERROR_CODE_HEADER_ONLY
 
 #include "NovaUtils.hpp"
 
-#include <boost/filesystem.hpp>
 #include <boost/intrusive/set.hpp>
 #include <boost/intrusive/unordered_set.hpp>
 #include <boost/lockfree/queue.hpp>
@@ -119,9 +119,7 @@ struct DiskOutThread
         cmd->samplerate = samplingRate;
         strcpy(cmd->payload, fileName);
 
-        bool success = mQueue.push(cmd);
-        assert(success);
-        mSemaphore.post();
+        pushCommand(cmd);
 
         return ret;
     }
@@ -135,9 +133,7 @@ struct DiskOutThread
 
         fillCmdStruct(cmd);
 
-        bool success = mQueue.push(cmd);
-        assert(success);
-        mSemaphore.post();
+        pushCommand(cmd);
 
         return true;
     }
@@ -148,9 +144,7 @@ struct DiskOutThread
         if (!cmd)
             return false;
 
-        bool success = mQueue.push(cmd);
-        assert(success);
-        mSemaphore.post();
+        pushCommand(cmd);
 
         return true;
     }
@@ -168,12 +162,49 @@ struct DiskOutThread
     }
 
 private:
+    void pushCommand( Cmd * cmd )
+    {
+        bool warningPosted = false;
+        for (int attempts = 0; ; ++attempts) {
+            bool success = mQueue.push(cmd);
+            if (success)
+                break;
+
+            if (attempts < 256)
+                continue;
+
+            if (!warningPosted)
+                printf("DiskOutThread: warning - cannot push command to queue\n");
+
+            // no rt-safe!
+            if (attempts < 2048)
+                std::this_thread::yield();
+            else
+                std::this_thread::sleep_for( std::chrono::milliseconds(10) );
+        }
+        mSemaphore.post();
+    }
+
     Cmd * allocateCmd(CmdType cmdType, int ticket)
     {
         Cmd * cmd;
-        bool success = mPool.pop(cmd);
-        if (!success)
-            return nullptr;
+        bool warningPosted = false;
+        for (int attempts = 0; ; ++attempts) {
+            bool success = mPool.pop(cmd);
+            if (success)
+               break;
+
+            if (attempts < 256)
+                continue;
+
+            if (!warningPosted)
+                printf("DiskOutThread: warning - cannot allocate command struct\n");
+
+            if (attempts < 2048)
+                std::this_thread::yield();
+            else
+                std::this_thread::sleep_for( std::chrono::milliseconds(10) );
+        }
 
         cmd->cmd    = cmdType;
         cmd->ticket = ticket;
@@ -276,6 +307,7 @@ public:
         nova::loop(pathSize, [&](int index) {
             path[index] = (char)in0(indexOfPathStart + index);
         });
+        path[pathSize] = 0;
 
         mTicket = gThread->openFile(path, mChannelCount, (int)sampleRate());
         if (mTicket == -1) {
@@ -316,7 +348,6 @@ private:
 
 namespace {
 
-typedef boost::filesystem::path path;
 static const size_t framesPerChunk = 65536; // power of 2!
 static const size_t chunksBefore   = 16;
 static const size_t chunksAfter    = 32;
@@ -374,7 +405,7 @@ class PlaybackQueue:
 {
 public:
     // nrt
-    PlaybackQueue( bool isRealtime, int32_t id, path const & filename, position_t startIndex = 0 ):
+    PlaybackQueue( bool isRealtime, int32_t id, std::string const & filename, position_t startIndex = 0 ):
         id(id), sf(filename.c_str(), SFM_READ), terminate(false), realTimeSynthesis(isRealtime)
     {
         if (!isRealtime)
@@ -490,7 +521,6 @@ public:
             return;
         }
 
-
         sf.seek(position, SEEK_SET);
 
         std::vector<float> interleavedData(numberOfFrames * expectedChannels);
@@ -527,6 +557,7 @@ public:
             if (requestPosted) {
                 positionRequestSemaphore.post();
                 requestedChunks.insert(position);
+                return;
             }
         }
     }
@@ -536,6 +567,8 @@ public:
     {
         assert(realTimeSynthesis);
 
+        requestReadaheadChunks(currentPosition);
+
         int allowedOperations = 16;
         allowedOperations -= registerAvailableChunks(allowedOperations);
 
@@ -543,7 +576,7 @@ public:
             allowedOperations -= retireBefore(currentPosition - chunksBefore * framesPerChunk, allowedOperations);
 
         if (allowedOperations > 0)
-            retireAfter(currentPosition - chunksAfter * framesPerChunk, allowedOperations);
+            retireAfter(currentPosition + chunksAfter * framesPerChunk, allowedOperations);
     }
 
     // hashing
@@ -602,8 +635,8 @@ private:
         auto it = chunks.begin();
         for (int i = 0; i != rateLimit; ++i) {
             if (it->startFrame_ < position) {
-                auto next = std::next(it);
                 Chunk & chunk = *it;
+                auto next = std::next(it);
                 chunks.erase(it);
 
                 if( !retiredChunks.push(&chunk) ) {
@@ -625,8 +658,8 @@ private:
         auto it = chunks.rbegin();
         for (int i = 0; i != rateLimit; ++i) {
             if (it->startFrame_ > position) {
-                auto next = std::next(it);
                 Chunk & chunk = *it;
+                auto next = std::next(it);
                 chunks.erase(chunk);
 
                 if( !retiredChunks.push(&chunk) ) {
@@ -649,7 +682,7 @@ private:
         const position_t currentChunkPosition = chunkAt(currentPosition);
         const position_t readahead = currentChunkPosition + chunksAhead * framesPerChunk;
 
-        for (position_t requestPosition = currentPosition; requestPosition <= readahead; requestPosition += framesPerChunk) {
+        for (position_t requestPosition = currentChunkPosition; requestPosition <= readahead; requestPosition += framesPerChunk) {
             if ( chunks.find(requestPosition, CompareChunkWithPosition()) != chunks.end() )
                 continue; // already queued
 
@@ -663,7 +696,7 @@ private:
 
     static position_t chunkAt(position_t position)
     {
-        return position & (framesPerChunk - 1);
+        return position & (~(framesPerChunk - 1));
     }
 
     typedef boost::lockfree::queue<Chunk*, boost::lockfree::capacity<512>> ChunkQueue;
@@ -695,7 +728,7 @@ public:
     {}
 
     // nrt
-    PlaybackQueue * openAndQueueFile( bool isRealtime, int32_t id, path const & filename, position_t queuePosition )
+    PlaybackQueue * openAndQueueFile( bool isRealtime, int32_t id, std::string const & filename, position_t queuePosition )
     {
         return new PlaybackQueue( isRealtime, id, filename, queuePosition );
     }
@@ -806,7 +839,7 @@ static bool novaDiskInCmd2Nrt(World* world, void* inUserData)
 
     switch (cmd->mode) {
     case kOpen:
-        cmd->queue = gPlaybackManager.openAndQueueFile( world->mRealTime, cmd->id, path(cmd->path), cmd->queuePosition );
+        cmd->queue = gPlaybackManager.openAndQueueFile( world->mRealTime, cmd->id, std::string(cmd->path), cmd->queuePosition );
         break;
 
     case kClose:
@@ -905,7 +938,8 @@ struct NovaDiskIn:
     public SCUnit
 {
 public:
-    NovaDiskIn()
+    NovaDiskIn():
+        currentPosition(0)
     {
         mChannelCount       = in0(0);
         mPlaybackQueueIndex = in0(1);

@@ -1,11 +1,11 @@
 NovaDiskOut : UGen {
-	*ar { arg numberOfChannels, filename;
-		var args = numberOfChannels ++ [filename.size] ++ filename.asString.collectAs(_.ascii, Array);
+	*ar { arg signal, filename;
+		var args = [signal.size] ++ signal ++ [filename.size] ++ filename.asString.collectAs(_.ascii, Array);
 		^this.multiNew('audio', *args)
 	}
 }
 
-NovaDiskIn : UGen {
+NovaDiskIn : MultiOutUGen {
 	classvar readerIDAllocator;
 
 	*initClass {
@@ -19,7 +19,7 @@ NovaDiskIn : UGen {
 			server = Server.default
 		};
 
-		server.sendMsg(\cmd, \NovaDiskIn, 0 /* open */, cueID, "filename", completionMessage);
+		server.sendMsg(\cmd, \NovaDiskIn, 0 /* open */, cueID, filename, completionMessage);
 		^cueID
 	}
 
@@ -29,9 +29,15 @@ NovaDiskIn : UGen {
 		};
 
 		server.sendMsg(\cmd, \NovaDiskIn, 2 /* close */, cueID, "", completionMessage);
+		readerIDAllocator.free( cueID )
 	}
 
 	*ar { arg numberOfChannels, cueID;
 		^this.multiNew('audio', numberOfChannels, cueID)
+	}
+
+	init { arg numberOfChannels, cueID;
+		inputs = [numberOfChannels, cueID];
+		^this.initOutputs(numberOfChannels, rate)
 	}
 }
