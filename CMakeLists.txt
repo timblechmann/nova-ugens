@@ -19,14 +19,15 @@ include_directories(${SC_PATH}/include/common)
 include_directories(${SC_PATH}/external_libraries/nova-tt)
 
 if (${UNIX})
-  add_definitions(-fvisibility-inlines-hidden)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif(${UNIX})
 
 SET(CMAKE_SHARED_LIBRARY_PREFIX "")
 
-set (sources FeedbackAM.cpp
+set (sources
+  ESInterleaver.cpp
+  FeedbackAM.cpp
   NovaDiskIO.cpp
   NovaFB.cpp
   NovaFilters.cpp

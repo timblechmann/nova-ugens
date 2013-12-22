@@ -99,3 +99,26 @@ NovaFBNode {
 		fbOutNode = NovaFBOut.ar(fbInNode, channels, args);
 	}
 }
+
+ES3Interleaver_96k : MultiOutUGen {
+	*ar {|s0, s1, s2, s3, s4, s5, s6, s7, mode = 0|
+		var args = [s0, s1, s2, s3, s4, s5, s6, s7];
+
+		args = args.collect {|sig|
+			if (sig.rate != \audio) {
+				DC.ar(sig)
+			} {
+				sig
+			}
+		};
+
+		args = args ++ [mode];
+
+		^this.multiNew('audio', *args);
+	}
+
+	init { arg s0, s1, s2, s3, s4, s5, s6, s7, mode;
+		inputs = [s0, s1, s2, s3, s4, s5, s6, s7, mode];
+		^this.initOutputs(4, rate)
+	}
+}
