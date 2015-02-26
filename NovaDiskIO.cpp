@@ -763,6 +763,21 @@ public:
     }
 
     // rt
+    size_t playbackQueueCount() const
+    {
+        return playerQueues.size();
+    }
+
+    // rt
+    PlaybackQueue * unregisterFirstPlaybackQueue()
+    {
+        auto begin = playerQueues.begin();
+        PlaybackQueue * queue = &*begin;
+        playerQueues.erase( begin );
+        return queue;
+    }
+
+    // rt
     void readFromChunk( int32_t id, position_t position, float ** out, int inNumSamples, int expectedChannels)
     {
         auto it = playerQueues.find( id, HashFunctor(), EqualFunctor() );
@@ -821,7 +836,8 @@ NovaPlaybackManager gPlaybackManager;
 enum {
     kOpen,
     kSeek,
-    kClose
+    kClose,
+    kCloseAll
 };
 
 struct NovaDiskInCmd
@@ -831,6 +847,9 @@ struct NovaDiskInCmd
     int queuePosition;
     int id;
     PlaybackQueue * queue;
+
+    PlaybackQueue ** queues;
+    size_t numberOfQueues;
 };
 
 static bool novaDiskInCmd2Nrt(World* world, void* inUserData)
@@ -845,6 +864,13 @@ static bool novaDiskInCmd2Nrt(World* world, void* inUserData)
     case kClose:
         delete cmd->queue;
         cmd->queue = nullptr;
+        break;
+
+    case kCloseAll:
+        for( size_t i = 0; i != cmd->numberOfQueues; ++i ) {
+            delete cmd->queues[i];
+            cmd->queues[i] = nullptr;
+        }
         break;
 
     default:
@@ -864,6 +890,10 @@ static bool novaDiskInCmd3Rt(World* world, void* inUserData)
         cmd->queue = previousQueue;
         break;
     }
+
+    case kCloseAll:
+        RTFree( world, cmd->queues );
+        break;
 
     default:
         break;
@@ -919,6 +949,15 @@ void novaDiskInCmd(World *inWorld, void* inUserData, struct sc_msg_iter *args, v
     case kClose:
         cmd->queue = gPlaybackManager.unregisterPlaybackQueue(cmd->id);
         break;
+
+    case kCloseAll: {
+        cmd->numberOfQueues = gPlaybackManager.playbackQueueCount();
+        cmd->queues = (PlaybackQueue**)RTAlloc(inWorld, sizeof(PlaybackQueue**) * cmd->numberOfQueues);
+
+        for( size_t i = 0; i != cmd->numberOfQueues; ++i )
+            cmd->queues[i] = gPlaybackManager.unregisterFirstPlaybackQueue();
+        break;
+    }
 
     default:
         break;

@@ -32,6 +32,15 @@ NovaDiskIn : MultiOutUGen {
 		readerIDAllocator.free( cueID )
 	}
 
+	*closeAll {|completionMessage, server|
+		if (server.isNil) {
+			server = Server.default
+		};
+
+		server.sendMsg(\cmd, \NovaDiskIn, 3 /* closeAll */, 0, "", completionMessage);
+		NovaDiskIn.initClass;
+	}
+
 	*ar { arg numberOfChannels, cueID;
 		^this.multiNew('audio', numberOfChannels, cueID)
 	}
