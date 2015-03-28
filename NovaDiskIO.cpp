@@ -48,6 +48,8 @@ namespace intrusive = boost::intrusive;
 
 namespace {
 
+
+
 struct DiskOutThread
 {
     typedef enum {
@@ -56,7 +58,8 @@ struct DiskOutThread
         CloseFile
     } CmdType;
 
-    static const int PayloadSize = 1024 * 64 * sizeof(float); // pessimize: 64 channels, 1024 samples
+    typedef nova::tlsf_allocator<char, 128 * 1024 * 1024> RtAllocator; // 128M
+    RtAllocator mRtAllocator;
 
     struct Cmd
     {
@@ -65,14 +68,15 @@ struct DiskOutThread
         int channels;
         int frames;
         int samplerate;
-        char payload[PayloadSize];
+        void * payload;
     };
 
-    const int NumberOfElements = 256;
+    const int NumberOfElements = 4096;
 
     DiskOutThread():
         mQueue(NumberOfElements),
-        mPool(NumberOfElements + 8)
+        mPool(NumberOfElements + 8),
+        mRecycleQueue(NumberOfElements)
     {
         using namespace std;
 
@@ -117,7 +121,8 @@ struct DiskOutThread
 
         cmd->channels   = channels;
         cmd->samplerate = samplingRate;
-        strcpy(cmd->payload, fileName);
+        cmd->payload = mRtAllocator.allocate( strlen(fileName) + 1 );
+        strcpy( (char*)cmd->payload, fileName );
 
         pushCommand(cmd);
 
@@ -131,7 +136,9 @@ struct DiskOutThread
         if (!cmd)
             return false;
 
-        fillCmdStruct(cmd);
+        recycleChunks();
+
+        fillCmdStruct(cmd, mRtAllocator);
 
         pushCommand(cmd);
 
@@ -225,13 +232,14 @@ private:
                 info.channels = cmd->channels;
                 info.format   = SF_FORMAT_CAF | SF_FORMAT_FLOAT;
 
-                SNDFILE * handle = sf_open(cmd->payload, SFM_WRITE, &info);
+                SNDFILE * handle = sf_open( (const char*)cmd->payload, SFM_WRITE, &info);
                 if (!handle) {
-                    printf("could not open file: %s %s\n", cmd->payload, sf_error_number(sf_error(handle)));
+                    printf("could not open file: %s %s\n", (const char*)cmd->payload, sf_error_number(sf_error(handle)));
                     break;
                 }
 
                 mSndfileMap.insert(std::make_pair(cmd->ticket, handle));
+                mRecycleQueue.push( cmd->payload );
                 break;
             }
 
@@ -245,10 +253,15 @@ private:
 
             case WriteFrames:
             {
+                mScratchpad.resize( cmd->channels * cmd->frames );
+
                 interleave(cmd->channels, cmd->frames, (float*)cmd->payload, mScratchpad.data());
 
                 SNDFILE * handle = mSndfileMap[cmd->ticket];
                 int written = sf_writef_float(handle, mScratchpad.data(), cmd->frames);
+
+                mRecycleQueue.push( cmd->payload );
+                cmd->payload = nullptr;
 
                 break;
             }
@@ -273,18 +286,32 @@ private:
         });
     }
 
+    void recycleChunks()
+    {
+        for( int i = 0; i != 16; ++i ) {
+            bool recycled = mRecycleQueue.consume_one( [this] (void* chunk) {
+                mRtAllocator.deallocate( (char*)chunk, 1 );
+            });
+
+            if( !recycled )
+                return;
+        }
+    }
+
     std::thread mThread;
     std::atomic_bool mRunning;
 
-    boost::lockfree::queue<Cmd*> mQueue;
-    boost::lockfree::stack<Cmd*> mPool;
+    boost::lockfree::queue<Cmd*>  mQueue;
+    boost::lockfree::stack<Cmd*>  mPool;
+
+    boost::lockfree::queue<void*> mRecycleQueue;
 
     boost::sync::semaphore mSemaphore;
 
     std::atomic_int mTicket;
 
     std::map<int, SNDFILE*> mSndfileMap;
-    std::array<float, PayloadSize> mScratchpad;
+    std::vector<float> mScratchpad;
 };
 
 std::unique_ptr<DiskOutThread> gThread;
@@ -327,9 +354,11 @@ public:
 private:
     void next(int inNumSamples)
     {
-        gThread->pushFrames(mTicket, [&](DiskOutThread::Cmd * cmd) {
+        gThread->pushFrames(mTicket, [&](DiskOutThread::Cmd * cmd, DiskOutThread::RtAllocator & rtAlloc) {
             cmd->frames   = inNumSamples;
             cmd->channels = mChannelCount;
+
+            cmd->payload  = rtAlloc.allocate( inNumSamples * mChannelCount * sizeof(float) );
 
             nova::loop(mChannelCount, [&](int channel) {
                 const float * data = in(1 + channel);
