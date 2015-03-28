@@ -1,6 +1,7 @@
 NovaDiskOut : UGen {
 	*ar { arg signal, filename;
-		var args = [signal.size] ++ signal ++ [filename.size] ++ filename.asString.collectAs(_.ascii, Array);
+		var arrayedSignal = signal.asArray;
+		var args = [arrayedSignal.size] ++ arrayedSignal ++ [filename.size] ++ filename.asString.collectAs(_.ascii, Array);
 		^this.multiNew('audio', *args)
 	}
 }
