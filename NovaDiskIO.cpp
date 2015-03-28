@@ -40,6 +40,8 @@
 #include <boost/lockfree/stack.hpp>
 #include <boost/sync/semaphore.hpp>
 
+#include <boost/sync/mutexes/spin_mutex.hpp>
+
 
 static InterfaceTable *ft;
 
@@ -60,6 +62,7 @@ struct DiskOutThread
 
     typedef nova::tlsf_allocator<char, 128 * 1024 * 1024> RtAllocator; // 128M
     RtAllocator mRtAllocator;
+    boost::sync::spin_mutex mAllocatorLock;
 
     struct Cmd
     {
@@ -121,7 +124,9 @@ struct DiskOutThread
 
         cmd->channels   = channels;
         cmd->samplerate = samplingRate;
+        mAllocatorLock.lock();
         cmd->payload = mRtAllocator.allocate( strlen(fileName) + 1 );
+        mAllocatorLock.unlock();
         strcpy( (char*)cmd->payload, fileName );
 
         pushCommand(cmd);
@@ -138,7 +143,9 @@ struct DiskOutThread
 
         recycleChunks();
 
+        mAllocatorLock.lock();
         fillCmdStruct(cmd, mRtAllocator);
+        mAllocatorLock.unlock();
 
         pushCommand(cmd);
 
@@ -290,7 +297,9 @@ private:
     {
         for( int i = 0; i != 16; ++i ) {
             bool recycled = mRecycleQueue.consume_one( [this] (void* chunk) {
+                mAllocatorLock.lock();
                 mRtAllocator.deallocate( (char*)chunk, 1 );
+                mAllocatorLock.unlock();
             });
 
             if( !recycled )
