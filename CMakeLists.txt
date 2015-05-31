@@ -52,6 +52,12 @@ endforeach()
 target_link_libraries( NovaDiskIO sndfile)
 target_link_libraries( NovaDiskIO_supernova sndfile)
 
+target_include_directories( NovaDiskIO           PUBLIC boost_sync/include ${SC_PATH}/external_libraries/)
+target_include_directories( NovaDiskIO_supernova PUBLIC boost_sync/include ${SC_PATH}/external_libraries/)
+
+target_compile_definitions( NovaDiskIO           PUBLIC BOOST_SYNC_USE_STD_SYSTEM_ERROR)
+target_compile_definitions( NovaDiskIO_supernova PUBLIC BOOST_SYNC_USE_STD_SYSTEM_ERROR)
+
 install(TARGETS ${libs}
         DESTINATION "lib/SuperCollider/plugins/")
 
