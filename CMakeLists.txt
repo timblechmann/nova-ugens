@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.0)
 project (nova-ugens)
 
 enable_testing()
@@ -21,6 +21,7 @@ include_directories(${SC_PATH}/external_libraries/nova-tt)
 if (${UNIX})
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native") # boom
 endif(${UNIX})
 
 SET(CMAKE_SHARED_LIBRARY_PREFIX "")
@@ -52,8 +53,8 @@ endforeach()
 target_link_libraries( NovaDiskIO sndfile)
 target_link_libraries( NovaDiskIO_supernova sndfile)
 
-target_include_directories( NovaDiskIO           PUBLIC boost_sync/include ${SC_PATH}/external_libraries/)
-target_include_directories( NovaDiskIO_supernova PUBLIC boost_sync/include ${SC_PATH}/external_libraries/)
+target_include_directories( NovaDiskIO           PUBLIC boost_sync/include ${SC_PATH}/external_libraries/boost)
+target_include_directories( NovaDiskIO_supernova PUBLIC boost_sync/include ${SC_PATH}/external_libraries/boost)
 
 target_compile_definitions( NovaDiskIO           PUBLIC BOOST_SYNC_USE_STD_SYSTEM_ERROR)
 target_compile_definitions( NovaDiskIO_supernova PUBLIC BOOST_SYNC_USE_STD_SYSTEM_ERROR)
