@@ -60,10 +60,6 @@ struct DiskOutThread
         CloseFile
     } CmdType;
 
-    typedef nova::tlsf_allocator<char, 128 * 1024 * 1024> RtAllocator; // 128M
-    RtAllocator mRtAllocator;
-    boost::sync::spin_mutex mAllocatorLock;
-
     struct Cmd
     {
         CmdType cmd;
@@ -74,12 +70,9 @@ struct DiskOutThread
         void * payload;
     };
 
-    const int NumberOfElements = 4096;
+    static const size_t NumberOfElements = 4096;
 
-    DiskOutThread():
-        mQueue(NumberOfElements),
-        mPool(NumberOfElements + 8),
-        mRecycleQueue(NumberOfElements)
+    DiskOutThread()
     {
         using namespace std;
 
@@ -90,7 +83,7 @@ struct DiskOutThread
         });
 
         mRunning = true;
-        mThread = move(thread(bind(&DiskOutThread::cmdLoop, this)));
+        mThread = thread( [this] { cmdLoop(); } );
     }
 
     ~DiskOutThread()
@@ -114,7 +107,7 @@ struct DiskOutThread
         }
     }
 
-    int openFile(const char * fileName, int channels, int samplingRate)
+    int openFile(World * world, const char * fileName, int channels, int samplingRate)
     {
         int ret = mTicket.fetch_add(1);
 
@@ -124,9 +117,8 @@ struct DiskOutThread
 
         cmd->channels   = channels;
         cmd->samplerate = samplingRate;
-        mAllocatorLock.lock();
-        cmd->payload = mRtAllocator.allocate( strlen(fileName) + 1 );
-        mAllocatorLock.unlock();
+        cmd->payload    = RTAlloc( world, strlen(fileName) + 1 );
+
         strcpy( (char*)cmd->payload, fileName );
 
         pushCommand(cmd);
@@ -135,19 +127,15 @@ struct DiskOutThread
     }
 
     template <typename Functor>
-    bool pushFrames(int ticket, Functor const & fillCmdStruct)
+    bool pushFrames(World * world, int ticket, Functor const & fillCmdStruct)
     {
         Cmd * cmd = allocateCmd(WriteFrames, ticket);
         if (!cmd)
             return false;
 
-        recycleChunks();
-
-        mAllocatorLock.lock();
-        fillCmdStruct(cmd, mRtAllocator);
-        mAllocatorLock.unlock();
-
-        pushCommand(cmd);
+        recycleChunks( world );
+        fillCmdStruct( cmd );
+        pushCommand( cmd );
 
         return true;
     }
@@ -227,10 +215,7 @@ private:
 
     bool processQueueEvent()
     {
-        Cmd * cmd;
-        bool success = mQueue.pop(cmd);
-
-        if (success) {
+        return mQueue.consume_one( [this] (Cmd * cmd) {
             switch (cmd->cmd) {
             case OpenFile:
             {
@@ -279,9 +264,7 @@ private:
 
             bool pushSuccessful = mPool.push(cmd);
             assert(pushSuccessful);
-            return true;
-        } else
-            return false;
+        });
     }
 
     static void interleave(int channels, int frames, const float * source, float * destination)
@@ -293,13 +276,11 @@ private:
         });
     }
 
-    void recycleChunks()
+    void recycleChunks( World * world )
     {
         for( int i = 0; i != 16; ++i ) {
-            bool recycled = mRecycleQueue.consume_one( [this] (void* chunk) {
-                mAllocatorLock.lock();
-                mRtAllocator.deallocate( (char*)chunk, 1 );
-                mAllocatorLock.unlock();
+            bool recycled = mRecycleQueue.consume_one( [this, world] (void* chunk) {
+                RTFree( world, chunk );
             });
 
             if( !recycled )
@@ -310,10 +291,10 @@ private:
     std::thread mThread;
     std::atomic_bool mRunning;
 
-    boost::lockfree::queue<Cmd*>  mQueue;
-    boost::lockfree::stack<Cmd*>  mPool;
+    boost::lockfree::queue<Cmd*>  mQueue { NumberOfElements };
+    boost::lockfree::stack<Cmd*>  mPool  { NumberOfElements };
 
-    boost::lockfree::queue<void*> mRecycleQueue;
+    boost::lockfree::queue<void*> mRecycleQueue { NumberOfElements + 8 };
 
     boost::sync::semaphore mSemaphore;
 
@@ -345,7 +326,7 @@ public:
         });
         path[pathSize] = 0;
 
-        mTicket = gThread->openFile(path, mChannelCount, (int)sampleRate());
+        mTicket = gThread->openFile( mWorld, path, mChannelCount, (int)sampleRate());
         if (mTicket == -1) {
             Print("Cannot open file %s\n", path);
             mCalcFunc = ft->fClearUnitOutputs;
@@ -363,11 +344,17 @@ public:
 private:
     void next(int inNumSamples)
     {
-        gThread->pushFrames(mTicket, [&](DiskOutThread::Cmd * cmd, DiskOutThread::RtAllocator & rtAlloc) {
+        gThread->pushFrames( mWorld, mTicket, [&](DiskOutThread::Cmd * cmd) {
             cmd->frames   = inNumSamples;
             cmd->channels = mChannelCount;
 
-            cmd->payload  = rtAlloc.allocate( inNumSamples * mChannelCount * sizeof(float) );
+            cmd->payload  = RTAlloc( mWorld, inNumSamples * mChannelCount * sizeof(float) );
+            if( !cmd->payload ) {
+                Print("out of rt memory");
+                cmd->frames   = 0;
+                cmd->channels = 0;
+                return;
+            }
 
             nova::loop(mChannelCount, [&](int channel) {
                 const float * data = in(1 + channel);
@@ -396,6 +383,13 @@ typedef std::int64_t position_t;
 struct Chunk:
     public intrusive::set_base_hook<>
 {
+    static Chunk * readNewChunk( size_t frames, size_t channels, SndfileHandle & sndfile, position_t currentPosition)
+    {
+        Chunk * chunk = new Chunk( frames, channels );
+        chunk->read( sndfile, currentPosition );
+        return chunk;
+    }
+
     Chunk(size_t frames, size_t channels):
         frames_(frames)
     {
@@ -444,7 +438,7 @@ class PlaybackQueue:
 public:
     // nrt
     PlaybackQueue( bool isRealtime, int32_t id, std::string const & filename, position_t startIndex = 0 ):
-        id(id), sf(filename.c_str(), SFM_READ), terminate(false), realTimeSynthesis(isRealtime)
+        id(id), sf(filename.c_str(), SFM_READ), realTimeSynthesis(isRealtime)
     {
         if (!isRealtime)
             return;
@@ -455,9 +449,9 @@ public:
 
         registerAvailableChunks(16);
 
-        workerThread = std::move(std::thread([&]() {
+        workerThread = std::thread([&]() {
             this->readerLoop();
-        }));
+        });
     }
 
     // nrt
@@ -479,9 +473,7 @@ public:
     {
         sf.seek(queuePosition, SEEK_SET);
 
-        Chunk * chunk = new Chunk(framesPerChunk, sf.channels());
-
-        chunk->read(sf, queuePosition);
+        Chunk * chunk = Chunk::readNewChunk(framesPerChunk, sf.channels(), sf, queuePosition);
         queuePosition += chunk->frames_;
 
         for (;;) {
@@ -755,15 +747,13 @@ private:
     bool realTimeSynthesis;
 
     std::thread      workerThread;
-    std::atomic_bool terminate;
+    std::atomic_bool terminate {false};
 };
 
 class NovaPlaybackManager
 {
 public:
-    NovaPlaybackManager():
-        playerQueues(PlaybackQueueSet::bucket_traits(PlayerQueueBuckets, bucketCount))
-    {}
+    NovaPlaybackManager() = default;
 
     // nrt
     PlaybackQueue * openAndQueueFile( bool isRealtime, int32_t id, std::string const & filename, position_t queuePosition )
@@ -866,7 +856,7 @@ private:
 
     static const size_t bucketCount = 2048;
     PlaybackQueueSet::bucket_type PlayerQueueBuckets[bucketCount];
-    PlaybackQueueSet playerQueues;
+    PlaybackQueueSet playerQueues { PlaybackQueueSet::bucket_traits(PlayerQueueBuckets, bucketCount) };
 };
 
 NovaPlaybackManager gPlaybackManager;
@@ -1015,8 +1005,7 @@ struct NovaDiskIn:
     public SCUnit
 {
 public:
-    NovaDiskIn():
-        currentPosition(0)
+    NovaDiskIn()
     {
         mChannelCount       = in0(0);
         mPlaybackQueueIndex = in0(1);
@@ -1044,7 +1033,7 @@ private:
 
     int mChannelCount;
     int32_t mPlaybackQueueIndex;
-    position_t currentPosition;
+    position_t currentPosition = 0;
 };
 
 
