@@ -713,6 +713,9 @@ private:
         const position_t readahead = currentChunkPosition + chunksAhead * framesPerChunk;
 
         for (position_t requestPosition = currentChunkPosition; requestPosition <= readahead; requestPosition += framesPerChunk) {
+            if( requestPosition >= sf.frames() )
+                return; // eof
+
             if ( chunks.find(requestPosition, CompareChunkWithPosition()) != chunks.end() )
                 continue; // already queued
 
