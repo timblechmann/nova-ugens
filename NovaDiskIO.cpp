@@ -414,20 +414,19 @@ struct Chunk:
     }
 
     std::vector<float> data_;
-    position_t         startFrame_;
+    position_t         startFrame_ = 0;
     size_t             frames_;
 };
 
 struct CompareChunkWithPosition
 {
-    bool operator()(position_t const & lhs, Chunk const & rhs) const
-    {
-        return lhs < rhs.startFrame_;
-    }
+    static position_t getStartFrame( position_t startFrame ) { return startFrame;        }
+    static position_t getStartFrame( Chunk const & chunk   ) { return chunk.startFrame_; }
 
-    bool operator()(Chunk const & lhs, position_t const & rhs) const
+    template <typename Lhs, typename Rhs>
+    bool operator()(Lhs const & lhs, Rhs const & rhs) const
     {
-        return lhs.startFrame_ < rhs;
+        return getStartFrame( lhs ) < getStartFrame( rhs );
     }
 };
 
@@ -753,44 +752,47 @@ private:
     std::atomic_bool terminate {false};
 };
 
+typedef std::unique_ptr<PlaybackQueue> PlaybackQueuePtr;
+
+
 class NovaPlaybackManager
 {
 public:
     NovaPlaybackManager() = default;
 
     // nrt
-    PlaybackQueue * openAndQueueFile( bool isRealtime, int32_t id, std::string const & filename, position_t queuePosition )
+    PlaybackQueuePtr openAndQueueFile( bool isRealtime, int32_t id, std::string const & filename, position_t queuePosition )
     {
-        return new PlaybackQueue( isRealtime, id, filename, queuePosition );
+        return PlaybackQueuePtr( new PlaybackQueue( isRealtime, id, filename, queuePosition ) );
     }
 
     // rt
-    PlaybackQueue * registerPlaybackQueue( PlaybackQueue * q )
+    PlaybackQueuePtr registerPlaybackQueue( PlaybackQueuePtr && q )
     {
-        PlaybackQueue * previousValue = nullptr;
+        PlaybackQueuePtr previousValue;
 
         // id collision check!
         auto it = playerQueues.find( q->id, HashFunctor(), EqualFunctor() );
-        if (it != playerQueues.end()) {
-            previousValue = &*it;
-            playerQueues.erase(it);
+        if ( it != playerQueues.end() ) {
+            previousValue.reset( &*it );
+            playerQueues.erase( it );
         }
 
-        playerQueues.insert(*q);
+        playerQueues.insert( *q.release() );
         return previousValue;
     }
 
     // rt
-    PlaybackQueue * unregisterPlaybackQueue(int id)
+    PlaybackQueuePtr unregisterPlaybackQueue(int id)
     {
         auto it = playerQueues.find( id, HashFunctor(), EqualFunctor() );
         if ( it == playerQueues.end() )
             return nullptr;
 
-        PlaybackQueue * ret = &*it;
+        PlaybackQueuePtr ret( &*it );
 
         playerQueues.erase(it);
-        return ret;
+        return std::move( ret );
     }
 
     // rt
@@ -800,12 +802,12 @@ public:
     }
 
     // rt
-    PlaybackQueue * unregisterFirstPlaybackQueue()
+    PlaybackQueuePtr unregisterFirstPlaybackQueue()
     {
         auto begin = playerQueues.begin();
-        PlaybackQueue * queue = &*begin;
+        PlaybackQueuePtr queue( &*begin );
         playerQueues.erase( begin );
-        return queue;
+        return std::move( queue );
     }
 
     // rt
@@ -871,16 +873,20 @@ enum {
     kCloseAll
 };
 
+
 struct NovaDiskInCmd
 {
+    void construct() { new(this) NovaDiskInCmd; }
+    void destroy()   { this->~NovaDiskInCmd();    }
+
     int mode;
     char * path;
     int queuePosition;
     int id;
-    PlaybackQueue * queue;
+    PlaybackQueuePtr queue;
 
-    PlaybackQueue ** queues;
-    size_t numberOfQueues;
+    PlaybackQueuePtr * queues;
+    size_t numberOfQueues = 0;
 };
 
 static bool novaDiskInCmd2Nrt(World* world, void* inUserData)
@@ -893,15 +899,13 @@ static bool novaDiskInCmd2Nrt(World* world, void* inUserData)
         break;
 
     case kClose:
-        delete cmd->queue;
-        cmd->queue = nullptr;
+        cmd->queue.reset();
         break;
 
     case kCloseAll:
-        for( size_t i = 0; i != cmd->numberOfQueues; ++i ) {
-            delete cmd->queues[i];
-            cmd->queues[i] = nullptr;
-        }
+        for( size_t i = 0; i != cmd->numberOfQueues; ++i )
+            cmd->queues[i].reset();
+
         break;
 
     default:
@@ -917,8 +921,7 @@ static bool novaDiskInCmd3Rt(World* world, void* inUserData)
 
     switch (cmd->mode) {
     case kOpen: {
-        PlaybackQueue * previousQueue = gPlaybackManager.registerPlaybackQueue(cmd->queue);
-        cmd->queue = previousQueue;
+        cmd->queue = gPlaybackManager.registerPlaybackQueue( std::move( cmd->queue) );
         break;
     }
 
@@ -939,8 +942,7 @@ static bool novaDiskInCmd4NRt(World* world, void* inUserData)
 
     switch (cmd->mode) {
     case kOpen: {
-        if (cmd->queue)
-            delete cmd->queue;
+        cmd->queue.reset();
         break;
     }
     default:
@@ -951,13 +953,16 @@ static bool novaDiskInCmd4NRt(World* world, void* inUserData)
 }
 
 static void cmdCleanup(World* world, void* inUserData)
-{}
+{
+    NovaDiskInCmd * cmd = reinterpret_cast<NovaDiskInCmd*>(inUserData);
+    cmd->destroy();
+}
 
 void novaDiskInCmd(World *inWorld, void* inUserData, struct sc_msg_iter *args, void *replyAddr)
 {
     NovaDiskInCmd * cmd = (NovaDiskInCmd*)RTAlloc(inWorld, sizeof(NovaDiskInCmd));
+    cmd->construct();
 
-    cmd->queue = nullptr;
     cmd->mode  = args->geti(0);
     cmd->id    = args->geti(0);
     const char * path = args->gets();
@@ -983,10 +988,11 @@ void novaDiskInCmd(World *inWorld, void* inUserData, struct sc_msg_iter *args, v
 
     case kCloseAll: {
         cmd->numberOfQueues = gPlaybackManager.playbackQueueCount();
-        cmd->queues = (PlaybackQueue**)RTAlloc(inWorld, sizeof(PlaybackQueue**) * cmd->numberOfQueues);
+        cmd->queues = (PlaybackQueuePtr*)RTAlloc(inWorld, sizeof(PlaybackQueuePtr*) * cmd->numberOfQueues);
 
         for( size_t i = 0; i != cmd->numberOfQueues; ++i )
-            cmd->queues[i] = gPlaybackManager.unregisterFirstPlaybackQueue();
+            new( cmd->queues + i )  PlaybackQueuePtr( gPlaybackManager.unregisterFirstPlaybackQueue() );
+
         break;
     }
 
