@@ -632,13 +632,48 @@ private:
     }
 
     static void deinterleaveToOutput(float ** outputRegions, int numberOfChannels, int sampleOffset, size_t numFrames,
-                                     const float * interleavedInput)
+                                     const float * __restrict__ interleavedInput)
     {
-        for( int channel = 0; channel != numberOfChannels; ++channel ) {
-            float * out = outputRegions[channel] + sampleOffset;
-
+        if( numberOfChannels == 1 ) {
             for (size_t frame = 0; frame != numFrames; ++frame) {
-                const float * sample = interleavedInput + (numberOfChannels * frame) + channel;
+                float frameData = *(interleavedInput + frame);
+
+                (outputRegions[0] + sampleOffset)[frame] = frameData;
+            }
+            return;
+        }
+
+        if( numberOfChannels == 2 ) {
+            for (size_t frame = 0; frame != numFrames; ++frame) {
+                float frameData[2] = { *(interleavedInput + (2 * frame) + 0),
+                                       *(interleavedInput + (2 * frame) + 1), };
+
+                (outputRegions[0] + sampleOffset)[frame] = frameData[0];
+                (outputRegions[1] + sampleOffset)[frame] = frameData[1];
+            }
+            return;
+        }
+
+        if( numberOfChannels == 4 ) {
+            for (size_t frame = 0; frame != numFrames; ++frame) {
+                float frameData[4] = { *(interleavedInput + (4 * frame) + 0),
+                                       *(interleavedInput + (4 * frame) + 1),
+                                       *(interleavedInput + (4 * frame) + 2),
+                                       *(interleavedInput + (4 * frame) + 3), };
+
+                (outputRegions[0] + sampleOffset)[frame] = frameData[0];
+                (outputRegions[1] + sampleOffset)[frame] = frameData[1];
+                (outputRegions[2] + sampleOffset)[frame] = frameData[2];
+                (outputRegions[3] + sampleOffset)[frame] = frameData[3];
+            }
+            return;
+        }
+
+
+        for (size_t frame = 0; frame != numFrames; ++frame) {
+            for( int channel = 0; channel != numberOfChannels; ++channel ) {
+                float * __restrict__       out = outputRegions[channel] + sampleOffset;
+                const float * __restrict__ sample = interleavedInput + (numberOfChannels * frame) + channel;
                 out[frame] = *sample;
             }
         }
