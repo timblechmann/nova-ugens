@@ -443,10 +443,10 @@ public:
             return;
 
         // we start queuing the first chunks immediately so they are available
-        for (int i = 0; i != 16; ++i)
+        for (int i = 0; i != chunksAhead; ++i)
             queue( chunkAt(startIndex + i * framesPerChunk) );
 
-        registerAvailableChunks(16);
+        registerAvailableChunks(chunksAhead);
 
         workerThread = std::thread([&]() {
             this->readerLoop();
