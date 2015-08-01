@@ -18,11 +18,16 @@ include_directories(${SC_PATH}/include/common)
 
 include_directories(${SC_PATH}/external_libraries/nova-tt)
 
-if (${UNIX})
+if( CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES Clang)
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
-  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1y")
   set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native") # boom
-endif(${UNIX})
+endif()
+
+if( CMAKE_CXX_COMPILER_ID MATCHES Clang)
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+endif()
+
 
 SET(CMAKE_SHARED_LIBRARY_PREFIX "")
 
