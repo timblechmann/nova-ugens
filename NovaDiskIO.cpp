@@ -383,24 +383,24 @@ typedef std::int64_t position_t;
 struct Chunk:
     public intrusive::set_base_hook<>
 {
-    static Chunk * readNewChunk( size_t frames, size_t channels, SndfileHandle & sndfile, position_t currentPosition)
+    Chunk(SndfileHandle & sndfile, position_t currentPosition)
     {
-        Chunk * chunk = new Chunk( frames, channels );
-        chunk->read( sndfile, currentPosition );
-        return chunk;
-    }
-
-    Chunk(size_t frames, size_t channels):
-        frames_(frames)
-    {
-        data_.resize(frames * channels, 0.f);
-    }
-
-    void read(SndfileHandle & sndfile, position_t currentPosition)
-    {
-        size_t numberOfFrames = sndfile.readf(data_.data(), framesPerChunk);
+        data_ = (float*)malloc( framesPerChunk * sndfile.channels() * sizeof(float) );
         startFrame_ = currentPosition;
-        frames_     = numberOfFrames;
+
+        const position_t framesInFile = sndfile.frames();
+        position_t remaining = std::min( (position_t)framesPerChunk, framesInFile - startFrame_ );
+
+        while( remaining > 0 ) {
+            size_t numberOfFrames = sndfile.readf(data_ + frames_, remaining);
+            frames_              += numberOfFrames;
+            remaining            -= numberOfFrames;
+        }
+    }
+
+    ~Chunk()
+    {
+        free( data_ );
     }
 
     bool operator<=(Chunk const & rhs) const
@@ -413,15 +413,20 @@ struct Chunk:
         return startFrame_ < rhs.startFrame_;
     }
 
-    std::vector<float> data_;
+    position_t startFrame() const { return startFrame_; }
+    size_t  frames()        const { return frames_;     }
+    float * data()          const { return data_;       }
+
+private:
+    float *            data_;
     position_t         startFrame_ = 0;
-    size_t             frames_;
+    size_t             frames_ = 0;
 };
 
 struct CompareChunkWithPosition
 {
     static position_t getStartFrame( position_t startFrame ) { return startFrame;        }
-    static position_t getStartFrame( Chunk const & chunk   ) { return chunk.startFrame_; }
+    static position_t getStartFrame( Chunk const & chunk   ) { return chunk.startFrame(); }
 
     template <typename Lhs, typename Rhs>
     bool operator()(Lhs const & lhs, Rhs const & rhs) const
@@ -472,8 +477,8 @@ public:
     {
         sf.seek(queuePosition, SEEK_SET);
 
-        Chunk * chunk = Chunk::readNewChunk(framesPerChunk, sf.channels(), sf, queuePosition);
-        queuePosition += chunk->frames_;
+        Chunk * chunk = new Chunk(sf, queuePosition);
+        queuePosition += chunk->frames();
 
         for (;;) {
             bool success = chunksForRt.push(chunk);
@@ -509,12 +514,12 @@ public:
         Chunk & chunk1 = *chunk1It;
 
         const size_t firstFrameInChunk1  = position - chunk1Pos;
-        const size_t availFramesInChunk1 = framesPerChunk - firstFrameInChunk1;
+        const size_t availFramesInChunk1 = chunk1.frames() - firstFrameInChunk1;
 
         const size_t framesFromChunk1    = std::min(availFramesInChunk1, numberOfFrames);
         const size_t offset              = firstFrameInChunk1 * channels;
 
-        deinterleaveToOutput( out, channels, 0, framesFromChunk1, chunk1.data_.data() + offset );
+        deinterleaveToOutput( out, channels, 0, framesFromChunk1, chunk1.data() + offset );
 
         if (framesFromChunk1 == numberOfFrames)
             return; // we are done
@@ -530,10 +535,10 @@ public:
 
         Chunk & chunk2 = *chunk2It;
 
-        const size_t framesFromChunk2 = std::min(remainingFrames, chunk2.frames_);
+        const size_t framesFromChunk2 = std::min(remainingFrames, chunk2.frames());
         const size_t framesToClear    = remainingFrames - framesFromChunk2;
 
-        deinterleaveToOutput( out, channels, framesFromChunk1, framesFromChunk2, chunk2.data_.data() );
+        deinterleaveToOutput( out, channels, framesFromChunk1, framesFromChunk2, chunk2.data() );
 
         if (framesToClear) {
             assert( framesFromChunk1 + framesFromChunk2 + framesToClear == numberOfFrames );
@@ -686,7 +691,7 @@ private:
         for (int i = 0; i != rateLimit; ++i) {
             bool elementConsumed = chunksForRt.consume_one([&](Chunk * chunk) {
                 chunks.insert(*chunk);
-                requestedChunks.erase(chunk->startFrame_);
+                requestedChunks.erase(chunk->startFrame());
             });
             if (!elementConsumed)
                 return i;
@@ -696,14 +701,18 @@ private:
 
     int retireBefore(position_t position, int rateLimit = 16)
     {
+        if( chunks.empty() )
+            return 0;
+
         auto it = chunks.begin();
         for (int i = 0; i != rateLimit; ++i) {
-            if (it->startFrame_ < position) {
+            if (it->startFrame() < position) {
                 Chunk & chunk = *it;
                 auto next = std::next(it);
                 chunks.erase(it);
 
                 if( !retiredChunks.push(&chunk) ) {
+                    printf("re-insert\n");
                     chunks.insert(chunk);
                     return i;
                 }
@@ -719,14 +728,18 @@ private:
 
     int retireAfter(position_t position, int rateLimit = 16)
     {
+        if( chunks.empty() )
+            return 0;
+
         auto it = chunks.rbegin();
         for (int i = 0; i != rateLimit; ++i) {
-            if (it->startFrame_ > position) {
+            if (it->startFrame() > position) {
                 Chunk & chunk = *it;
                 auto next = std::next(it);
                 chunks.erase(chunk);
 
                 if( !retiredChunks.push(&chunk) ) {
+                    printf("re-insert\n");
                     chunks.insert(chunk);
                     return i;
                 }
@@ -768,7 +781,7 @@ private:
 
     typedef boost::lockfree::queue<Chunk*, boost::lockfree::capacity<512>> ChunkQueue;
     typedef boost::lockfree::queue<position_t, boost::lockfree::capacity<512>> PositionQueue;
-    typedef intrusive::set<Chunk> ChunkSet;
+    typedef intrusive::set< Chunk, intrusive::constant_time_size<false> > ChunkSet;
     typedef nova::tlsf_allocator<char, 128 * 1024> RtAllocator; // 128k
 
     SndfileHandle sf;
