@@ -22,110 +22,109 @@
 static InterfaceTable *ft;
 
 struct FBAM:
-	public NovaUnit
+    public NovaUnit
 {
 public:
-	FBAM():
-		zm1_(0)
-	{
-		float feedback = in0(1);
-		fb_ = sc_clip(feedback, 0.0, 1.9); // really depends on the frequency
+    FBAM()
+    {
+        float feedback = in0(1);
+        fb_ = sc_clip(feedback, 0.0, 1.9); // really depends on the frequency
 
-		switch (inRate(1)) {
-		case calc_ScalarRate:
-			set_calc_function<FBAM, &FBAM::next_i>();
-			break;
+        switch (inRate(1)) {
+        case calc_ScalarRate:
+            set_calc_function<FBAM, &FBAM::next_i>();
+            break;
 
-		case calc_BufRate:
-			set_calc_function<FBAM, &FBAM::next_k>();
-			break;
+        case calc_BufRate:
+            set_calc_function<FBAM, &FBAM::next_k>();
+            break;
 
-		case calc_FullRate:
-			set_calc_function<FBAM, &FBAM::next_a>();
-			break;
-		}
-	}
+        case calc_FullRate:
+            set_calc_function<FBAM, &FBAM::next_a>();
+            break;
+        }
+    }
 
 private:
-	void next_i(int inNumSamples)
-	{
-		auto fb = makeScalar(fb_);
-		next(inNumSamples, fb);
-	}
+    void next_i(int inNumSamples)
+    {
+        auto fb = makeScalar(fb_);
+        next(inNumSamples, fb);
+    }
 
-	void next_k(int inNumSamples)
-	{
-		float newFeedback = in0(1);
-		newFeedback = sc_clip(newFeedback, 0.0, 1.9); // really depends on the frequency
+    void next_k(int inNumSamples)
+    {
+        float newFeedback = in0(1);
+        newFeedback = sc_clip(newFeedback, 0.0, 1.9); // really depends on the frequency
 
-		if (newFeedback != fb_) {
-			auto fb = makeSlope(newFeedback, fb_);
-			fb_ = newFeedback;
-			next(inNumSamples, fb);
-		} else
-			next_i(inNumSamples);
-	}
+        if (newFeedback != fb_) {
+            auto fb = makeSlope(newFeedback, fb_);
+            fb_ = newFeedback;
+            next(inNumSamples, fb);
+        } else
+            next_i(inNumSamples);
+    }
 
-	void next_a(int inNumSamples)
-	{
-		auto fb = makeSignal(1, [](float f) { return sc_clip(f, 0.f, 1.f);});
-		next(inNumSamples, fb);
-	}
+    void next_a(int inNumSamples)
+    {
+        auto fb = makeSignal(1, [](float f) { return sc_clip(f, 0.f, 1.f);});
+        next(inNumSamples, fb);
+    }
 
-	template <typename FeedBack>
-	void next(int inNumSamples, FeedBack & fb)
-	{
-		const float * inSig = zin(0);
-		float * outSig = zout(0);
+    template <typename FeedBack>
+    void next(int inNumSamples, FeedBack & fb)
+    {
+        const float * inSig = zin(0);
+        float * outSig = zout(0);
 
-		float zm1 = zm1_;
+        float zm1 = zm1_;
 
-		loop (inNumSamples >> 2, [&] {
-			const float x0 = ZXP(inSig);
-			const float x1 = ZXP(inSig);
-			const float x2 = ZXP(inSig);
-			const float x3 = ZXP(inSig);
+        loop (inNumSamples >> 2, [&] {
+            const float x0 = ZXP(inSig);
+            const float x1 = ZXP(inSig);
+            const float x2 = ZXP(inSig);
+            const float x3 = ZXP(inSig);
 
-			float fb0 = fb.consume();
-			float fb1 = fb.consume();
-			float fb2 = fb.consume();
-			float fb3 = fb.consume();
+            float fb0 = fb.consume();
+            float fb1 = fb.consume();
+            float fb2 = fb.consume();
+            float fb3 = fb.consume();
 
-			float out0 = tick(x0, zm1, fb0);
-			float out1 = tick(x1, zm1, fb1);
-			float out2 = tick(x2, zm1, fb2);
-			float out3 = tick(x3, zm1, fb3);
+            float out0 = tick(x0, zm1, fb0);
+            float out1 = tick(x1, zm1, fb1);
+            float out2 = tick(x2, zm1, fb2);
+            float out3 = tick(x3, zm1, fb3);
 
-			ZXP(outSig) = out0;
-			ZXP(outSig) = out1;
-			ZXP(outSig) = out2;
-			ZXP(outSig) = out3;
-		});
+            ZXP(outSig) = out0;
+            ZXP(outSig) = out1;
+            ZXP(outSig) = out2;
+            ZXP(outSig) = out3;
+        });
 
-		loop(inNumSamples & 3, [&] {
-			const float x = ZXP(inSig);
-			float feedback = fb.consume();
-			ZXP(outSig) = tick(x, zm1, feedback);
-		});
+        loop(inNumSamples & 3, [&] {
+            const float x = ZXP(inSig);
+            float feedback = fb.consume();
+            ZXP(outSig) = tick(x, zm1, feedback);
+        });
 
-		zm1_ = zm1;
-	}
+        zm1_ = zm1;
+    }
 
-	static float tick (float x, float & zm1, float feedback)
-	{
-		const float out = x * (1 + zm1 * feedback);
-		zm1 = out;
-		return out;
-	}
+    static float tick (float x, float & zm1, float feedback)
+    {
+        const float out = x * (1 + zm1 * feedback);
+        zm1 = out;
+        return out;
+    }
 
-	float zm1_;
-	float fb_;
+    float zm1_ = 0;
+    float fb_  = 0;
 };
 
 DEFINE_XTORS(FBAM)
 
 PluginLoad(FBAM)
 {
-	ft = inTable;
-	DefineSimpleUnit(FBAM);
+    ft = inTable;
+    DefineSimpleUnit(FBAM);
 }

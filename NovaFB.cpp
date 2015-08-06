@@ -24,68 +24,68 @@
 static InterfaceTable *ft;
 
 struct NovaFBIn:
-	public SCUnit
+    public SCUnit
 {
 public:
-	NovaFBIn()
-	{
-		mChannelCount = in0(0);
+    NovaFBIn()
+    {
+        mChannelCount = in0(0);
 
-		size_t allocSize = mBufLength * sizeof(float) * mChannelCount;
-		mBuff = (float*)RTAlloc(mWorld, allocSize );
-		memset(mBuff, 0, allocSize);
+        size_t allocSize = mBufLength * sizeof(float) * mChannelCount;
+        mBuff = (float*)RTAlloc(mWorld, allocSize );
+        memset(mBuff, 0, allocSize);
 
-		set_calc_function<NovaFBIn, &NovaFBIn::next_i>();
-	}
+        set_calc_function<NovaFBIn, &NovaFBIn::next_i>();
+    }
 
-	~NovaFBIn()
-	{
-		RTFree(mWorld, mBuff);
-	}
+    ~NovaFBIn()
+    {
+        RTFree(mWorld, mBuff);
+    }
 
 private:
-	void next_i(int inNumSamples)
-	{
-		nova::loop(mChannelCount, [&](int index) {
-			const float * buf = mBuff + mBufLength * index;
-			float * dest = out(index + 1);
+    void next_i(int inNumSamples)
+    {
+        nova::loop(mChannelCount, [&](int index) {
+            const float * buf = mBuff + mBufLength * index;
+            float * dest = out(index + 1);
 
-			memcpy(dest, buf, inNumSamples * sizeof(float));
-		});
-	}
+            memcpy(dest, buf, inNumSamples * sizeof(float));
+        });
+    }
 
-	friend class NovaFBOut;
-	float * mBuff;
-	int mChannelCount;
+    friend class NovaFBOut;
+    float * mBuff;
+    int mChannelCount;
 };
 
 struct NovaFBOut:
-	public SCUnit
+    public SCUnit
 {
 public:
-	NovaFBOut()
-	{
-		mChannelCount = in0(1);
+    NovaFBOut()
+    {
+        mChannelCount = in0(1);
 
-		NovaFBIn * inputNode = static_cast<NovaFBIn*>(mInput[0]->mFromUnit);
-		mBuff = inputNode->mBuff;
+        NovaFBIn * inputNode = static_cast<NovaFBIn*>(mInput[0]->mFromUnit);
+        mBuff = inputNode->mBuff;
 
-		set_calc_function<NovaFBOut, &NovaFBOut::next_i>();
-	}
+        set_calc_function<NovaFBOut, &NovaFBOut::next_i>();
+    }
 
 private:
-	void next_i(int inNumSamples)
-	{
-		nova::loop(mChannelCount, [&](int index) {
-			const float * source = in( 2 + index );
-			float * buf = mBuff + mBufLength * index;
+    void next_i(int inNumSamples)
+    {
+        nova::loop(mChannelCount, [&](int index) {
+            const float * source = in( 2 + index );
+            float * buf = mBuff + mBufLength * index;
 
-			memcpy(buf, source, inNumSamples * sizeof(float));
-		});
-	}
+            memcpy(buf, source, inNumSamples * sizeof(float));
+        });
+    }
 
-	float * mBuff;
-	int mChannelCount;
+    float * mBuff;
+    int mChannelCount;
 };
 
 DEFINE_XTORS(NovaFBOut)
@@ -93,7 +93,7 @@ DEFINE_XTORS(NovaFBIn)
 
 PluginLoad(NovaFB)
 {
-	ft = inTable;
-	DefineDtorUnit(NovaFBIn);
-	DefineSimpleUnit(NovaFBOut);
+    ft = inTable;
+    DefineDtorUnit(NovaFBIn);
+    DefineSimpleUnit(NovaFBOut);
 }
