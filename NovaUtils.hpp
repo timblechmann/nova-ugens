@@ -73,7 +73,7 @@ inline void run_object(void (*t)(), IntType)
 } /* namespace loop_detail */
 
 template <typename IntType, typename Functor>
-inline void loop(IntType loop_count, Functor & f)
+inline void loop(IntType loop_count, Functor && f)
 {
 	BOOST_STATIC_ASSERT(boost::is_integral<IntType>::value);
 
@@ -82,12 +82,15 @@ inline void loop(IntType loop_count, Functor & f)
 }
 
 template <typename IntType, typename Functor>
-inline void loop(IntType loop_count, Functor const & f)
+inline void loop1(IntType loop_count, Functor && f)
 {
 	BOOST_STATIC_ASSERT(boost::is_integral<IntType>::value);
 
-	for (IntType i = 0; i != loop_count; ++i)
-		loop_detail::run_object(f, i);
+    IntType i(0);
+    do {
+      loop_detail::run_object(f, i);
+      i +=1;
+    } while( i != loop_count );
 }
 
 }
