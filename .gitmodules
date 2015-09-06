@@ -1,3 +1,11 @@
 [submodule "boost_sync"]
 	path = boost_sync
 	url = https://github.com/boostorg/sync.git
+[submodule "nova-simd"]
+	path = nova-simd
+	url = https://github.com/timblechmann/nova-simd.git
+	branch = master
+[submodule "nova-dsp"]
+	path = nova-dsp
+	url = https://github.com/timblechmann/nova-dsp.git
+	branch = master
