@@ -5,21 +5,26 @@ enable_testing()
 
 include( sc-plugin-builder.cmake )
 
-SET(CMAKE_SHARED_LIBRARY_PREFIX "")
-
-set (sources
+set(sources
   ESInterleaver.cpp
-  FeedbackAM.cpp
   NovaDiskIO.cpp
   NovaFB.cpp
-  NovaFilters.cpp
   NovaGendy.cpp
-  NovaOsc.cpp)
+  NovaOsc.cpp
+
+# obsolete:
+# FeedbackAM.cpp
+# NovaFilters.cpp
+
+)
+
+add_library( tlsf TLSF-2.4.6/src/tlsf.c )
+set_target_properties( tlsf PROPERTIES POSITION_INDEPENDENT_CODE ON )
 
 foreach(src ${sources})
   string(REPLACE .cpp "" libname ${src} )
 
-  add_scplugin( ${libname} ${src} TLSF-2.4.6/src/tlsf.c )
+  add_scplugin( ${libname} ${src} )
 
   target_compile_definitions( ${libname}           PUBLIC BOOST_SYNC_USE_STD_SYSTEM_ERROR )
   target_compile_definitions( ${libname}_supernova PUBLIC BOOST_SYNC_USE_STD_SYSTEM_ERROR )
@@ -29,5 +34,8 @@ foreach(src ${sources})
 
 endforeach()
 
-target_link_libraries( NovaDiskIO           sndfile )
-target_link_libraries( NovaDiskIO_supernova sndfile )
+target_link_libraries( NovaDiskIO           sndfile tlsf )
+target_link_libraries( NovaDiskIO_supernova sndfile tlsf )
+
+add_scclass( NovaUGens sc/NovaDiskIOUGens.sc )
+add_scclass( NovaUGens sc/NovaUGens.sc       )

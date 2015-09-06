@@ -1,6 +1,7 @@
 ###################
 # ScPluginInterface
 
+cmake_minimum_required( VERSION 3.1 )
 
 get_filename_component(SOURCEPARENT "${CMAKE_CURRENT_SOURCE_DIR}" PATH)
 find_path(SC_PATH NAMES include/plugin_interface/SC_PlugIn.h
