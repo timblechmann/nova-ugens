@@ -11,7 +11,9 @@ set(sources
   NovaFB.cpp
   NovaGendy.cpp
   NovaOsc.cpp
+  NovaPeakMeter.cpp
   NovaRMFilters.cpp
+  NovaTanhShaper.cpp
 
 # obsolete:
 # FeedbackAM.cpp
@@ -43,6 +45,12 @@ target_include_directories( NovaRMFilters           PUBLIC nova-dsp )
 target_include_directories( NovaRMFilters_supernova PUBLIC nova-dsp )
 
 
+target_include_directories( NovaTanhShaper           PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} )
+target_include_directories( NovaTanhShaper_supernova PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} )
+
+
 add_scclass( NovaUGens sc/NovaDiskIOUGens.sc )
 add_scclass( NovaUGens sc/NovaUGens.sc       )
 add_scclass( NovaUGens sc/NovaRMFilters.sc   )
+add_scclass( NovaUGens sc/NovaTanhShaper.sc  )
+add_scclass( NovaUGens sc/NovaPeakMeter.sc  )
