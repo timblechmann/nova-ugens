@@ -11,6 +11,7 @@ set(sources
   NovaFB.cpp
   NovaGendy.cpp
   NovaOsc.cpp
+  NovaRMFilters.cpp
 
 # obsolete:
 # FeedbackAM.cpp
@@ -39,3 +40,7 @@ target_link_libraries( NovaDiskIO_supernova sndfile tlsf )
 
 add_scclass( NovaUGens sc/NovaDiskIOUGens.sc )
 add_scclass( NovaUGens sc/NovaUGens.sc       )
+
+
+target_include_directories( NovaRMFilters           PUBLIC nova-dsp )
+target_include_directories( NovaRMFilters_supernova PUBLIC nova-dsp )
