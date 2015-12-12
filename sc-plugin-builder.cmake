@@ -5,7 +5,7 @@
 get_filename_component(SOURCEPARENT "${CMAKE_CURRENT_SOURCE_DIR}" PATH)
 find_path(SC_PATH NAMES include/plugin_interface/SC_PlugIn.h
         PATHS "${SOURCEPARENT}"
-        PATH_SUFFIXES SuperCollider)
+		PATH_SUFFIXES SuperCollider supercollider)
 
 set(SC_FOUND FALSE)
 if(IS_DIRECTORY ${SC_PATH})
