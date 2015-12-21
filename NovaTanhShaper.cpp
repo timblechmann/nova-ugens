@@ -19,6 +19,9 @@
 
 #include "SC_PlugIn.hpp"
 #include <cmath>
+
+#include <boost/config.hpp>
+
 #include "nova-simd/vec.hpp"
 #include "nova-simd/detail/define_macros.hpp"
 #include "nova-simd/detail/wrap_arguments.hpp"
@@ -161,9 +164,7 @@ public:
     }
 
     template <bool simd>
-#ifdef __GNUC__
-    __attribute__((always_inline,flatten))
-#endif
+    BOOST_FORCEINLINE
     void next_k(int inNumSamples)
     {
         const float * in_ptr = in(0);
@@ -189,9 +190,7 @@ public:
     }
 
     template <bool simd>
-#ifdef __GNUC__
-    __attribute__((always_inline,flatten))
-#endif
+    BOOST_FORCEINLINE
     void next_i(int inNumSamples)
     {
         const float * in_ptr = in(0);
@@ -247,9 +246,7 @@ public:
     }
 
     template <bool simd>
-#ifdef __GNUC__
-    __attribute__((always_inline,flatten))
-#endif
+    BOOST_FORCEINLINE
     void next_k(int inNumSamples)
     {
         const float * in_ptr = in(0);
@@ -275,9 +272,7 @@ public:
     }
 
     template <bool simd>
-#ifdef __GNUC__
-    __attribute__((always_inline,flatten))
-#endif
+    BOOST_FORCEINLINE
     void next_i(int inNumSamples)
     {
         const float * in_ptr = in(0);
