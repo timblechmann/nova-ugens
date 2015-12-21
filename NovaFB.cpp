@@ -21,6 +21,8 @@
 
 #include "NovaUtils.hpp"
 
+#include "nova-simd/simd_memory.hpp"
+
 static InterfaceTable *ft;
 
 struct NovaFBIn:
@@ -35,7 +37,7 @@ public:
         mBuff = (float*)RTAlloc(mWorld, allocSize );
         memset(mBuff, 0, allocSize);
 
-        set_calc_function<NovaFBIn, &NovaFBIn::next_i>();
+        set_vector_calc_function<NovaFBIn, &NovaFBIn::next_vec, &NovaFBIn::next_i>();
     }
 
     ~NovaFBIn()
@@ -44,6 +46,16 @@ public:
     }
 
 private:
+    void next_vec(int inNumSamples)
+    {
+        nova::loop(mChannelCount, [&](int index) {
+            const float * buf = mBuff + mBufLength * index;
+            float * dest = out(index + 1);
+
+            nova::copyvec_na_simd( dest, buf, inNumSamples );
+        });
+    }
+
     void next_i(int inNumSamples)
     {
         nova::loop(mChannelCount, [&](int index) {
@@ -70,10 +82,20 @@ public:
         NovaFBIn * inputNode = static_cast<NovaFBIn*>(mInput[0]->mFromUnit);
         mBuff = inputNode->mBuff;
 
-        set_calc_function<NovaFBOut, &NovaFBOut::next_i>();
+        set_vector_calc_function<NovaFBOut, &NovaFBOut::next_vec, &NovaFBOut::next_i>();
     }
 
 private:
+    void next_vec(int inNumSamples)
+    {
+        nova::loop(mChannelCount, [&](int index) {
+            const float * source = in( 2 + index );
+            float * buf = mBuff + mBufLength * index;
+
+            nova::copyvec_an_simd( buf, source, inNumSamples );
+        });
+    }
+
     void next_i(int inNumSamples)
     {
         nova::loop(mChannelCount, [&](int index) {
