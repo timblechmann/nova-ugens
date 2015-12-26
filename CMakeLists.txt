@@ -8,7 +8,6 @@ include( sc-plugin-builder.cmake )
 set(sources
   ESInterleaver.cpp
   NovaDiskIO.cpp
-  NovaFB.cpp
   NovaGendy.cpp
   NovaOsc.cpp
   NovaPeakMeter.cpp

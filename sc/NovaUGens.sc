@@ -10,12 +10,6 @@ GendyI : UGen {
     }
 }
 
-// DiodeLadderFilter : Filter {
-//     *ar { arg sig, freq = 440, q = 0.2, feedbackHPF = 1000, mul = 1.0, add = 0.0;
-//         ^this.multiNew('audio', sig, freq, q, feedbackHPF).madd( mul, add )
-//     }
-// }
-
 FBAM : PureUGen {
     *ar { arg sig, feedback = 0.1, mul = 1.0, add = 0.0;
         ^this.multiNew('audio', sig, feedback).madd( mul, add )
@@ -47,56 +41,6 @@ NovaOsc : UGen {
 	}
 	*kr { arg buf, freq, phase = 0, interpolation = 1, mul=1.0, add=0.0;
 		^this.multiNew('audio', buf, freq, phase, interpolation).madd( mul, add )
-	}
-}
-
-NovaFBIn : MultiOutUGen {
-	*ar {|numberOfChannels = 1|
-		^this.multiNew('audio', numberOfChannels);
-	}
-
-	init { arg argNumChannels ... theInputs;
-		inputs = [argNumChannels];
-		^this.initOutputs(argNumChannels + 1, rate)
-	}
-}
-
-NovaFBOut : UGen {
-	*ar {|inUgen, numberOfChannels, signal|
-		var args = [inUgen, numberOfChannels] ++ signal;
-
-		^this.multiNew('audio', *args)
-	}
-}
-
-NovaFBNode {
-	var <channels, fbInNode, fbOutNode;
-
-	*new {|channelCount|
-		^super.newCopyArgs(channelCount)
-	}
-
-	read {
-		var ret = NovaFBIn.ar(channels);
-
-		if (fbInNode.notNil) {
-			Error("NovaFBNode: only one read call is allowed").throw;
-		};
-
-		fbInNode = ret[0];
-		^ret[1..]
-	}
-
-	write {|args|
-		if (args.size != channels) {
-			Error("NovaFBNode: channel count mismatch % %".format(args.size, channels)).throw;
-		};
-
-		if (fbOutNode.notNil) {
-			Error("NovaFBNode: write called multiple times").throw;
-		};
-
-		fbOutNode = NovaFBOut.ar(fbInNode, channels, args);
 	}
 }
 
