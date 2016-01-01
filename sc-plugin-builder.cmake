@@ -89,3 +89,13 @@ function(add_scclass Prefix)
             DESTINATION "share/SuperCollider/Extensions/${Prefix}/")
   endif()
 endfunction()
+
+
+##########
+# ccache
+
+find_program( CCacheExecutable ccache )
+if( CCacheExecutable )
+  set( CMAKE_C_COMPILER_LAUNCHER   ${CCacheExecutable} )
+  set( CMAKE_CXX_COMPILER_LAUNCHER ${CCacheExecutable} )
+endif()
