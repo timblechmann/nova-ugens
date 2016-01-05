@@ -17,7 +17,7 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "SC_PlugIn.h"
+#include "SC_PlugIn.hpp"
 
 #include "nova-dsp/mitra_regalia_filters.hpp"
 
@@ -90,8 +90,6 @@ public:
 typedef nova_shelf<nova::mitra_regalia_low_shelf<float, float, false, true> > NovaLowshelf;
 typedef nova_shelf<nova::mitra_regalia_high_shelf<float, float, false, true> > NovaHighshelf;
 
-DEFINE_XTORS(NovaLowshelf)
-DEFINE_XTORS(NovaHighshelf)
 
 template <typename filter_type>
 class nova_band_filter:
@@ -134,8 +132,6 @@ public:
 typedef nova_band_filter<nova::mitra_regalia_band_pass<float, float, false, true> > NovaBPF;
 typedef nova_band_filter<nova::mitra_regalia_band_reject<float, float, false, true> > NovaBRF;
 
-DEFINE_XTORS(NovaBPF)
-DEFINE_XTORS(NovaBRF)
 
 template <typename filter_type>
 class nova_filter:
@@ -174,8 +170,6 @@ public:
 typedef nova_filter<nova::mitra_regalia_high_pass<float, float, false, true> > NovaHPF;
 typedef nova_filter<nova::mitra_regalia_low_pass<float, float, false, true> > NovaLPF;
 
-DEFINE_XTORS(NovaHPF)
-DEFINE_XTORS(NovaLPF)
 
 template <typename filter_type>
 class nova_eq:
@@ -220,22 +214,19 @@ public:
 };
 
 typedef nova_filter<nova::mitra_regalia_high_pass<float, float, false, true> > NovaEQ;
-DEFINE_XTORS(NovaEQ)
 
 } /* namespace */
 
 PluginLoad(NovaRMFilters)
 {
     ft = inTable;
-    DefineDtorUnit(NovaLowshelf);
-    DefineDtorUnit(NovaHighshelf);
 
-    DefineDtorUnit(NovaBPF);
-    DefineDtorUnit(NovaBRF);
-
-    DefineDtorUnit(NovaLPF);
-    DefineDtorUnit(NovaHPF);
-
-    DefineDtorUnit(NovaEQ);
+    registerUnit< NovaLowshelf  >( ft, "NovaLowshelf"  );
+    registerUnit< NovaHighshelf >( ft, "NovaHighshelf" );
+    registerUnit< NovaBPF       >( ft, "NovaBPF"       );
+    registerUnit< NovaBRF       >( ft, "NovaBRF"       );
+    registerUnit< NovaLPF       >( ft, "NovaLPF"       );
+    registerUnit< NovaHPF       >( ft, "NovaHPF"       );
+    registerUnit< NovaEQ        >( ft, "NovaEQ"        );
 }
 

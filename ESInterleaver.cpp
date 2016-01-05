@@ -56,10 +56,8 @@ private:
     }
 };
 
-DEFINE_XTORS(ES3Interleaver_96k)
-
 PluginLoad(ES3Interleaver_96k)
 {
     ft = inTable;
-    DefineSimpleUnit(ES3Interleaver_96k);
+    registerUnit<ES3Interleaver_96k>( ft, "ES3Interleaver_96k" );
 }

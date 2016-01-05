@@ -1095,18 +1095,14 @@ private:
 
 
 
-
-DEFINE_XTORS(NovaDiskOut)
-DEFINE_XTORS(NovaDiskIn)
-
-
 PluginLoad(NovaDiskIO)
 {
     gThread.reset(new DiskOutThread);
 
     ft = inTable;
-    DefineDtorUnit(NovaDiskOut);
 
-    DefineDtorUnit(NovaDiskIn);
+    registerUnit< NovaDiskOut >( ft, "NovaDiskOut" );
+    registerUnit< NovaDiskIn  >( ft, "NovaDiskIn"  );
+
     DefinePlugInCmd("NovaDiskIn", novaDiskInCmd, (void*)&gPlaybackManager);
 }

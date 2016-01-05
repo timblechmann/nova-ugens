@@ -212,7 +212,6 @@ private:
     float mScale;
 };
 
-DEFINE_XTORS(PulseDPW2)
 
 
 enum interpolator {
@@ -527,7 +526,6 @@ struct NovaSinOsc:
     }
 };
 
-DEFINE_XTORS(NovaSinOsc)
 
 struct NovaOsc:
     NovaOscBase
@@ -570,13 +568,12 @@ struct NovaOsc:
 };
 
 
-DEFINE_XTORS(NovaOsc)
 
 PluginLoad(NovaOsc)
 {
     ft = inTable;
-    DefineSimpleUnit(PulseDPW2);
-    DefineSimpleUnit(NovaSinOsc);
-    DefineSimpleUnit(NovaOsc);
-}
 
+    registerUnit< PulseDPW2  >( ft, "PulseDPW2"  );
+    registerUnit< NovaSinOsc >( ft, "NovaSinOsc" );
+    registerUnit< NovaOsc    >( ft, "NovaOsc"    );
+}

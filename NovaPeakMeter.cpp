@@ -240,13 +240,11 @@ public:
     }
 };
 
-DEFINE_XTORS(PeakRMS)
-
 } /* namespace */
 
 PluginLoad(PeakRMS)
 {
     ft = inTable;
 
-    DefineDtorUnit(PeakRMS)
+    registerUnit< PeakRMS  >( ft, "PeakRMS"  );
 }

@@ -203,7 +203,6 @@ public:
 
 };
 
-DEFINE_XTORS(NovaTanhShaper)
 
 class NovaFastTanhShaper:
     public SCUnit
@@ -285,9 +284,6 @@ public:
 
 };
 
-DEFINE_XTORS(NovaFastTanhShaper)
-
-
 }
 
 InterfaceTable * ft;
@@ -295,6 +291,7 @@ InterfaceTable * ft;
 PluginLoad(NovaTanhShaper)
 {
     ft = inTable;
-    DefineSimpleUnit(NovaTanhShaper);
-    DefineSimpleUnit(NovaFastTanhShaper);
+
+    registerUnit< NovaTanhShaper     >( ft, "NovaTanhShaper"  );
+    registerUnit< NovaFastTanhShaper >( ft, "NovaFastTanhShaper" );
 }

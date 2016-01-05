@@ -418,12 +418,8 @@ struct GendyN : public SCUnit
 	Float mAmp[6];
 };
 
-typedef GendyN<double> GendyI;
-
-DEFINE_XTORS(GendyI)
-
 PluginLoad(NovaGendy)
 {
 	ft = inTable;
-	DefineDtorUnit(GendyI);
+    registerUnit< GendyN<double> >( ft, "GendyI" );
 }

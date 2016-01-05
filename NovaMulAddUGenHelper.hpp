@@ -37,14 +37,14 @@ struct muladd_ugen:
 #define DEFINE_UGEN_FUNCTION_WRAPPER(CLASS_NAME, FUNCTION_NAME, INDEX)  \
     static void s_##FUNCTION_NAME##_nop(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_nop<float> ma;                            \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_nop<float> ma;                      \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_i(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_mul_c<float> ma(IN0(INDEX));              \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_mul_c<float> ma(IN0(INDEX));        \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_k(CLASS_NAME * unit, int num_samples) \
@@ -54,22 +54,22 @@ struct muladd_ugen:
             s_##FUNCTION_NAME##_mul_i(unit, num_samples);               \
         } else {                                                        \
             float slope = CALCSLOPE(mul, unit->mul);                    \
-            detail::muladd_helper_mul_l<float> ma(unit->mul, slope);    \
+            nova::detail::muladd_helper_mul_l<float> ma(unit->mul, slope); \
             unit->mul = mul;                                            \
-            unit->FUNCTION_NAME(num_samples, ma);                              \
+            unit->FUNCTION_NAME(num_samples, ma);                       \
         }                                                               \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_a(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_mul_v<float> ma(IN(INDEX));               \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_mul_v<float> ma(IN(INDEX));         \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_add_i(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_add_c<float> ma(IN0(INDEX+1));            \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_add_c<float> ma(IN0(INDEX+1));      \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_add_k(CLASS_NAME * unit, int num_samples) \
@@ -79,23 +79,23 @@ struct muladd_ugen:
             s_##FUNCTION_NAME##_add_i(unit, num_samples);               \
         } else {                                                        \
             float slope = CALCSLOPE(add, unit->add);                    \
-            detail::muladd_helper_add_l<float> ma(unit->add, slope);    \
+            nova::detail::muladd_helper_add_l<float> ma(unit->add, slope); \
             unit->add = add;                                            \
-            unit->FUNCTION_NAME(num_samples, ma);                              \
+            unit->FUNCTION_NAME(num_samples, ma);                       \
         }                                                               \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_add_a(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_add_v<float> ma(IN(INDEX+1));             \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_add_v<float> ma(IN(INDEX+1));       \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_i_add_i(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_mul_c_add_c<float> ma(IN0(INDEX), IN0(INDEX+1)); \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_mul_c_add_c<float> ma(IN0(INDEX), IN0(INDEX+1)); \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_i_add_k(CLASS_NAME * unit, int num_samples) \
@@ -105,9 +105,9 @@ struct muladd_ugen:
             s_##FUNCTION_NAME##_mul_i_add_i(unit, num_samples);         \
         } else {                                                        \
             float slope = CALCSLOPE(add, unit->add);                    \
-            detail::muladd_helper_mul_c_add_l<float> ma(IN0(INDEX), unit->add, slope); \
+            nova::detail::muladd_helper_mul_c_add_l<float> ma(IN0(INDEX), unit->add, slope); \
             unit->add = add;                                            \
-            unit->FUNCTION_NAME(num_samples, ma);                              \
+            unit->FUNCTION_NAME(num_samples, ma);                       \
         }                                                               \
     }                                                                   \
                                                                         \
@@ -118,9 +118,9 @@ struct muladd_ugen:
             s_##FUNCTION_NAME##_mul_i_add_i(unit, num_samples);         \
         } else {                                                        \
             float slope = CALCSLOPE(mul, unit->mul);                    \
-            detail::muladd_helper_mul_l_add_c<float> ma(unit->mul, slope, IN0(INDEX+1)); \
+            nova::detail::muladd_helper_mul_l_add_c<float> ma(unit->mul, slope, IN0(INDEX+1)); \
             unit->mul = mul;                                            \
-            unit->FUNCTION_NAME(num_samples, ma);                              \
+            unit->FUNCTION_NAME(num_samples, ma);                       \
         }                                                               \
     }                                                                   \
                                                                         \
@@ -133,31 +133,31 @@ struct muladd_ugen:
         } else {                                                        \
             float mul_slope = CALCSLOPE(mul, unit->mul);                \
             if (add == unit->add) {                                     \
-                detail::muladd_helper_mul_l_add_c<float> ma(unit->mul, mul_slope, add); \
+                nova::detail::muladd_helper_mul_l_add_c<float> ma(unit->mul, mul_slope, add); \
                 unit->mul = mul;                                        \
-                unit->FUNCTION_NAME(num_samples, ma);                          \
+                unit->FUNCTION_NAME(num_samples, ma);                   \
             }                                                           \
             else                                                        \
             {                                                           \
                 float add_slope = CALCSLOPE(add, unit->add);            \
-                detail::muladd_helper_mul_l_add_l<float> ma(unit->mul, mul_slope, unit->add, add_slope); \
+                nova::detail::muladd_helper_mul_l_add_l<float> ma(unit->mul, mul_slope, unit->add, add_slope); \
                 unit->mul = mul;                                        \
                 unit->add = add;                                        \
-                unit->FUNCTION_NAME(num_samples, ma);                          \
+                unit->FUNCTION_NAME(num_samples, ma);                   \
             }                                                           \
         }                                                               \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_i_add_a(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_mul_c_add_v<float> ma(IN0(INDEX), IN(INDEX+1)); \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_mul_c_add_v<float> ma(IN0(INDEX), IN(INDEX+1)); \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_a_add_i(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_mul_v_add_c<float> ma(IN(INDEX), IN0(INDEX+1)); \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_mul_v_add_c<float> ma(IN(INDEX), IN0(INDEX+1)); \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_a_add_k(CLASS_NAME * unit, int num_samples) \
@@ -167,9 +167,9 @@ struct muladd_ugen:
             s_##FUNCTION_NAME##_mul_a_add_i(unit, num_samples);         \
         } else {                                                        \
             float slope = CALCSLOPE(add, unit->add);                    \
-            detail::muladd_helper_mul_v_add_l<float> ma(IN(INDEX), unit->add, slope); \
+            nova::detail::muladd_helper_mul_v_add_l<float> ma(IN(INDEX), unit->add, slope); \
             unit->add = add;                                            \
-            unit->FUNCTION_NAME(num_samples, ma);                              \
+            unit->FUNCTION_NAME(num_samples, ma);                       \
         }                                                               \
     }                                                                   \
                                                                         \
@@ -180,16 +180,16 @@ struct muladd_ugen:
             s_##FUNCTION_NAME##_mul_i_add_a(unit, num_samples);         \
         } else {                                                        \
             float slope = CALCSLOPE(mul, unit->mul);                    \
-            detail::muladd_helper_mul_l_add_v<float> ma(unit->mul, slope, IN(INDEX+1)); \
+            nova::detail::muladd_helper_mul_l_add_v<float> ma(unit->mul, slope, IN(INDEX+1)); \
             unit->mul = mul;                                            \
-            unit->FUNCTION_NAME(num_samples, ma);                              \
+            unit->FUNCTION_NAME(num_samples, ma);                       \
         }                                                               \
     }                                                                   \
                                                                         \
     static void s_##FUNCTION_NAME##_mul_a_add_a(CLASS_NAME * unit, int num_samples) \
     {                                                                   \
-        detail::muladd_helper_mul_v_add_v<float> ma(IN(INDEX), IN(INDEX+1)); \
-        unit->FUNCTION_NAME(num_samples, ma);                                  \
+        nova::detail::muladd_helper_mul_v_add_v<float> ma(IN(INDEX), IN(INDEX+1)); \
+        unit->FUNCTION_NAME(num_samples, ma);                           \
     }                                                                   \
                                                                         \
 static UnitCalcFunc select_calcfunc(const CLASS_NAME * unit)            \
@@ -265,16 +265,4 @@ static UnitCalcFunc select_calcfunc(const CLASS_NAME * unit)            \
     default:                                                            \
         assert(false);                                                  \
     }                                                                   \
-}
-
-/* define supercollider-style constructor and destructor functions */
-#define DEFINE_XTORS(CLASSNAME)         \
-void CLASSNAME##_Ctor(CLASSNAME * unit) \
-{                                       \
-    new(unit) CLASSNAME();              \
-}                                       \
-                                        \
-void CLASSNAME##_Dtor(CLASSNAME * unit) \
-{                                       \
-    unit->~CLASSNAME();                 \
 }
